@@ -430,6 +430,7 @@
       '<div class="set-btns"><button class="btn b-export">EXPORT</button><button class="btn b-import">IMPORT</button></div>' +
       '<div class="save-msg outlined outlined-sm"></div>' +
       '<div class="admin-box" hidden><div class="sec-title outlined">ADMIN</div>' +
+        '<input class="adm-search" type="text" placeholder="SEARCH USERNAME" hidden>' +
         '<select class="adm-target"></select>' +
         '<input class="adm-amt" type="text" inputmode="decimal" placeholder="AMOUNT (E.G. 5000 OR 2.5M)">' +
         '<div class="set-btns"><button class="btn b-give">GIVE LOGS</button></div>' +
@@ -451,14 +452,20 @@
     });
     st.admin = p.querySelector('.admin-box'); st.admTarget = p.querySelector('.adm-target');
     st.admAmt = p.querySelector('.adm-amt'); st.admMsg = p.querySelector('.adm-msg');
+    st.admSearch = p.querySelector('.adm-search');
+    st.admSearch.hidden = !(TCS.cloud && TCS.cloud.active);
+    st.admSearch.addEventListener('change', fillAdminTargets);
+    st.admSearch.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') st.admSearch.blur(); });
     p.querySelector('.b-give').addEventListener('click', () => {
       const s = S(); if (!s.isAdmin()) return;
       const n = parseAmount(st.admAmt.value);
       const [u, slot] = (st.admTarget.value || '').split('|');
       if (!(n > 0)){ st.admMsg.textContent = 'ENTER AN AMOUNT'; return; }
-      const ok = s.adminGiveWood(u, +slot, n);
-      st.admMsg.textContent = ok ? 'GAVE ' + U.fmt(n) + ' LOGS' : 'FAILED';
-      if (ok) fillAdminTargets();
+      st.admMsg.textContent = '...';
+      Promise.resolve(s.adminGiveWood(u, +slot, n)).then(ok => {
+        st.admMsg.textContent = ok ? 'GAVE ' + U.fmt(n) + ' LOGS' : 'FAILED';
+        if (ok) fillAdminTargets();
+      });
     });
     p.querySelector('.b-switch').addEventListener('click', () => {
       try { TCS.menu.switchProfile(); } catch(e){ console.error(e); }
@@ -475,11 +482,15 @@
     return suf ? parseFloat(m[1]) * suf : NaN;
   }
   function fillAdminTargets(){
-    const keep = st.admTarget.value;
-    st.admTarget.innerHTML = S().adminTargets().map(t =>
-      '<option value="' + esc(t.username) + '|' + t.slot + '">' + (t.self ? 'ME' : esc(t.username)) + ' - ' + esc(t.name) +
-      ' (' + U.fmt(Math.floor(t.wood)) + ')</option>').join('');
-    if (keep && [...st.admTarget.options].some(o => o.value === keep)) st.admTarget.value = keep;
+    const keep = st.admTarget.value, ticket = fillAdminTargets.n = (fillAdminTargets.n || 0) + 1;
+    // local mode returns rows, cloud mode a Promise (key = uid); optional username search in cloud mode
+    Promise.resolve(S().adminTargets(st.admSearch && !st.admSearch.hidden ? st.admSearch.value : '')).catch(() => []).then(rows => {
+      if (ticket !== fillAdminTargets.n) return;
+      st.admTarget.innerHTML = (rows || []).map(t =>
+        '<option value="' + esc(t.key || t.username) + '|' + t.slot + '">' + (t.self ? 'ME' : esc(t.username)) + ' - ' + esc(t.name) +
+        ' (' + U.fmt(Math.floor(t.wood)) + ')</option>').join('');
+      if (keep && [...st.admTarget.options].some(o => o.value === keep)) st.admTarget.value = keep;
+    });
   }
   function syncSettings(){
     if (!st.ranges) return;

@@ -1,0 +1,82 @@
+rules_version = '2';
+// Tree Chopping Simulator — paste into Firebase console > Firestore Database > Rules, then Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    // the admin is whoever owns the username "shiv"
+    function isShiv() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/usernames/shiv)
+        && get(/databases/$(database)/documents/usernames/shiv).data.uid == request.auth.uid;
+    }
+    // accounts use <username>@players.treechopping.game, so a user can only claim their own name
+    function ownsName(lower) {
+      return request.auth.token.email == lower + '@players.treechopping.game';
+    }
+    function num(v) { return v is int || v is float; }
+
+    // uniqueness: usernames/{lowercase} = {uid, username}; create-only
+    match /usernames/{name} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && name.matches('^[a-z0-9_]{4,16}$')
+        && ownsName(name)
+        && request.resource.data.keys().hasOnly(['uid', 'username'])
+        && request.resource.data.keys().hasAll(['uid', 'username'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.username is string
+        && request.resource.data.username.lower() == name;
+      allow update, delete: if false;
+    }
+
+    match /users/{uid} {
+      allow get: if isOwner(uid);
+      allow list: if false;
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['username', 'usernameLower'])
+        && request.resource.data.username is string
+        && request.resource.data.usernameLower is string
+        && request.resource.data.username.lower() == request.resource.data.usernameLower
+        && ownsName(request.resource.data.usernameLower);
+      allow delete: if false;
+
+      // save slots 0..2
+      match /slots/{slot} {
+        allow read: if isOwner(uid) || isShiv();
+        allow create, update: if isOwner(uid)
+          && slot in ['0', '1', '2']
+          && request.resource.data.keys().hasOnly(['uid', 'username', 'usernameLower', 'slot', 'lastSaved', 'profileName',
+               'wood', 'lifetimeWood', 'rebirths', 'speciesIndex', 'playTime', 'data'])
+          && request.resource.data.uid == uid
+          && request.resource.data.username is string && request.resource.data.username.size() <= 16
+          && request.resource.data.usernameLower is string && ownsName(request.resource.data.usernameLower)
+          && request.resource.data.slot is int && string(request.resource.data.slot) == slot
+          && num(request.resource.data.lastSaved)
+          && request.resource.data.profileName is string && request.resource.data.profileName.size() <= 20
+          && num(request.resource.data.wood) && num(request.resource.data.lifetimeWood)
+          && num(request.resource.data.rebirths) && num(request.resource.data.speciesIndex) && num(request.resource.data.playTime)
+          && request.resource.data.data is string && request.resource.data.data.size() < 400000;
+        allow delete: if isOwner(uid);
+      }
+
+      // wood grants from the admin: Shiv creates, the owner's client reads (adds the wood) and deletes
+      match /grants/{gid} {
+        allow read, delete: if isOwner(uid);
+        allow create: if isShiv()
+          && request.resource.data.keys().hasOnly(['slot', 'amount', 'by', 'at'])
+          && request.resource.data.slot in [0, 1, 2]
+          && num(request.resource.data.amount) && request.resource.data.amount > 0
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.at == request.time;
+        allow update: if false;
+      }
+    }
+
+    // admin player list: collection-group query over every slots collection
+    match /{path=**}/slots/{slot} {
+      allow read: if isShiv();
+    }
+  }
+}

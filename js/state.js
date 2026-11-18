@@ -287,7 +287,12 @@
     },
 
     /* ---------- save / load ---------- */
-    key(username, slot){ return 'tcs_save_' + String(username).toLowerCase() + '_' + slot; },
+    // cloud mode caches each cloud slot locally under the signed-in uid (js/cloud.js keeps it in sync)
+    key(username, slot){
+      const C = TCS.cloud;
+      if (C && C.uid && String(username).toLowerCase() === String(C.username || '').toLowerCase()) return 'tcs_csave_' + C.uid + '_' + slot;
+      return 'tcs_save_' + String(username).toLowerCase() + '_' + slot;
+    },
     // set the active profile (call before load/newGame). accounts/menu phase owns the flow.
     setProfile(username, slot){ S.profile = { username, slot }; },
     save(){
@@ -331,10 +336,11 @@
       return { profileName: d.profileName, lifetimeWood: d.lifetimeWood || 0, wood: d.wood || 0, rebirths: (d.stats && d.stats.rebirths) || 0,
         species: sp.name, stage: D.STAGES[(d.speciesIndex || 0) % D.STAGES.length].name, playTime: (d.stats && d.stats.playTime) || 0, lastSaved: d.lastSaved };
     },
-    deleteSlot(username, slot){ store.remove(S.key(username, slot)); },
+    deleteSlot(username, slot){ store.remove(S.key(username, slot)); if (TCS.cloud && TCS.cloud.uid) TCS.cloud.onDelete(slot); },
     renameSlot(username, slot, name){
       const d = store.getJSON(S.key(username, slot), null); if (!d) return false;
       d.profileName = String(name).slice(0, 20); store.setJSON(S.key(username, slot), d);
+      if (TCS.cloud && TCS.cloud.uid) TCS.cloud.onRename(slot, d);
       if (S.profile && S.profile.username === username && S.profile.slot === slot) S.data.profileName = d.profileName;
       return true;
     },
@@ -374,12 +380,14 @@
        gates the UI, not real security. Only works while Shiv is the logged-in account. */
     ADMIN_NAME: 'shiv',
     isAdmin(){
+      if (TCS.cloud && TCS.cloud.active) return !!(TCS.cloud.uid && TCS.cloud.admin);
       const cur = TCS.accounts && TCS.accounts.current;
       return !!cur && String(cur).toLowerCase() === S.ADMIN_NAME && !!TCS.accounts.find(cur);
     },
     // every saved profile on this device: [{username, slot, name, wood, self}]
-    adminTargets(){
+    adminTargets(query){
       if (!S.isAdmin()) return [];
+      if (TCS.cloud && TCS.cloud.active) return TCS.cloud.adminTargets(query); // Promise of rows (key = uid)
       const out = [];
       TCS.accounts.list().forEach(a => {
         for (let slot = 0; slot < 3; slot++){
@@ -393,6 +401,11 @@
     // give n logs to a profile (the live one directly, others by editing their stored save)
     adminGiveWood(username, slot, n){
       if (!S.isAdmin() || !(n > 0) || !isFinite(n)) return false;
+      if (TCS.cloud && TCS.cloud.active){
+        // username is the target's uid here; the live profile gets it directly, others via a grant doc
+        if (S.profile && username === TCS.cloud.uid && S.profile.slot === slot){ S.addWood(n); S.save(); return true; }
+        return TCS.cloud.grant(username, slot, n);
+      }
       if (S.profile && S.profile.username.toLowerCase() === String(username).toLowerCase() && S.profile.slot === slot){
         S.addWood(n); S.save(); return true;
       }

@@ -63,7 +63,7 @@
       if (u.length < 4) return 'At least 4 characters';
       if (u.length > 16) return 'At most 16 characters';
       if (!/^[A-Za-z0-9_]+$/.test(u)) return 'Letters, numbers and _ only';
-      if (A.find(u)) return 'Username taken';
+      if (!(TCS.cloud && TCS.cloud.active) && A.find(u)) return 'Username taken'; // cloud: checked on create (local-only names may migrate)
       return null;
     },
     // returns {ok, error, field:'user'|'pass'|'pass2'}
@@ -71,8 +71,9 @@
       username = String(username || '').trim();
       const ue = A.validateUsername(username);
       if (ue) return { ok: false, error: ue, field: 'user' };
-      if (!password || password.length < 4) return { ok: false, error: 'At least 4 characters', field: 'pass' };
+      if (!password || password.length < 6) return { ok: false, error: 'At least 6 characters', field: 'pass' };
       if (password2 !== undefined && password2 !== password) return { ok: false, error: "Passwords don't match", field: 'pass2' };
+      if (TCS.cloud && TCS.cloud.active) return TCS.cloud.create(username, password);
       const salt = makeSalt();
       const hash = await sha256(salt + ':' + password);
       const list = A.list(); list.push({ username, salt, hash });
@@ -81,6 +82,7 @@
       return { ok: true, username };
     },
     async login(username, password){
+      if (TCS.cloud && TCS.cloud.active) return TCS.cloud.login(String(username || '').trim(), password);
       const acc = A.find(String(username || '').trim());
       const fail = { ok: false, error: 'Wrong username or password' };
       if (!acc || !password) return fail;
@@ -92,8 +94,12 @@
     logout(){
       if (TCS.state.loaded) TCS.state.unload();
       A.current = null;
+      if (TCS.cloud && TCS.cloud.active) TCS.cloud.logout();
       TCS.bus.emit('logout');
     },
+    // local account check (used by cloud migration): true when acc's salted hash matches
+    async verify(acc, password){ return !!acc && !!password && (await sha256(acc.salt + ':' + password)) === acc.hash; },
+    _makeSalt: makeSalt,
     _sha256js: s => hex(sha256js(new TextEncoder().encode(s))), _sha256: sha256
   };
 })();

@@ -132,7 +132,7 @@ async function snapshot(page) {
     await page.waitForTimeout(400);
     const rbCls = await page.getAttribute('.rb-btn', 'class');
     const progTxt = await page.textContent('.rb-prog');
-    check('next-stage button enabled when the max rule is met', !/disabled/.test(rbCls) && /MAXED 23\/23/.test(progTxt), { rbCls, progTxt });
+    check('next-stage button enabled when the max rule is met', !/disabled/.test(rbCls) && progTxt.includes('MAXED ' + (25 - allowed) + '/' + (25 - allowed)), { rbCls, progTxt });
     const nextName = await page.textContent('.rb-next');
     check('panel shows next stage name', nextName.trim() === 'Birch Lake' || /birch lake/i.test(nextName), nextName);
     const expected = await page.evaluate(() => TCS.state.acornsOnRebirth());
@@ -217,12 +217,12 @@ async function snapshot(page) {
       TCS.store.setJSON(key, old);
       S.save(); const prof = S.profile;
       S.load(prof.username, 2);
-      const r = { v: S.data.version, w: S.data.owned.whetstone, a: S.data.acorns, ae: S.data.acornsEarned, sp: S.data.species, ach: !!S.data.achievements.wood_0, cos: !!S.data.cosmetics.beanie };
+      const r = { v: S.data.version, w: S.data.owned.whetstone, max: TCS.data.ECON.MAX_LEVEL, a: S.data.acorns, ae: S.data.acornsEarned, sp: S.data.species, ach: !!S.data.achievements.wood_0, cos: !!S.data.cosmetics.beanie };
       TCS.store.remove(key);
       S.load(prof.username, prof.slot);
       return r;
     });
-    check('v1 save migrates (clamped, acorns kept)', mig.v === 2 && mig.w === 25 && mig.a === 7 && mig.ae === 9 && mig.sp === 3 && mig.ach && mig.cos, mig);
+    check('v1 save migrates (clamped, acorns kept)', mig.v === 2 && mig.w === mig.max && mig.a === 7 && mig.ae === 9 && mig.sp === 3 && mig.ach && mig.cos, mig);
 
     // ---- settings: Log Out goes back to the menu
     await page.keyboard.press('Escape');

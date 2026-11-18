@@ -2,3 +2,6 @@ PROMPT.md
 node_modules/
 *.png
 tools/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log

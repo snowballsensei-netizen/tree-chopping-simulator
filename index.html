@@ -18,10 +18,11 @@
   <canvas id="c"></canvas>
   <div id="ui-layer"></div>
 </div>
+<script src="js/firebase-config.js"></script>
 <script type="module">
 import * as THREE from 'three';
 window.THREE = THREE;
-const files = ['util','data','state','scene','world','upgrades3d','audio','fx','ui','accounts','menu','main'];
+const files = ['util','data','state','scene','world','upgrades3d','audio','fx','ui','accounts','cloud','menu','main'];
 function load(i){
   if (i >= files.length) return;
   const s = document.createElement('script');
@@ -30,7 +31,22 @@ function load(i){
   s.onerror = () => { console.error('Failed to load js/' + files[i] + '.js'); load(i + 1); };
   document.body.appendChild(s);
 }
-load(0);
+// Cloud mode: load the Firebase SDK only when js/firebase-config.js holds a config (or ?emu for the emulator tests).
+// If it can't load (offline), TCS.fb stays null and js/cloud.js plays from the local cache.
+async function boot(){
+  const T = window.TCS = window.TCS || {};
+  const emu = /[?&]emu\b/.test(location.search);
+  if (!T.FIREBASE_CONFIG && emu) T.FIREBASE_CONFIG = { apiKey: 'demo-key', authDomain: 'demo-tcs.firebaseapp.com', projectId: 'demo-tcs', appId: 'demo' };
+  if (T.FIREBASE_CONFIG){
+    try {
+      const B = 'https://www.gstatic.com/firebasejs/10.12.2/';
+      const [app, A, F] = await Promise.all([import(B + 'firebase-app.js'), import(B + 'firebase-auth.js'), import(B + 'firebase-firestore.js')]);
+      T.fb = { app: app.initializeApp(T.FIREBASE_CONFIG), A, F, emu };
+    } catch(e){ console.warn('Firebase SDK unavailable, playing offline', e); T.fb = null; }
+  }
+  load(0);
+}
+boot();
 </script>
 </body>
 </html>

@@ -32,7 +32,7 @@
   ];
   /* Economy curve (tuned with tests/sim.js): base cost / value follow a geometric ladder per tier so every
      tier is a step up; max level per upgrade = MAX_LEVEL (cheapest tiers a little higher). */
-  const ECON = { C0: 50, R: 2.79, V0: 1, Q: 2.45, MAX_LEVEL: 25 };
+  const ECON = { C0: 50, R: 2.79, V0: 1, Q: 2.45, MAX_LEVEL: 15 };
   const nice = n => { const p = Math.pow(10, Math.floor(Math.log10(n)) - 1); return Math.round(n / p) * p; };
   UPGRADES.forEach((u, i) => {
     u.index = i; u.perSecond = u.type !== 'click';
@@ -201,7 +201,7 @@
     cosmeticById: Object.fromEntries([].concat(COSMETICS.hat, COSMETICS.face, COSMETICS.boots).map(c => [c.id, c])),
     // tunables
     PRICE_GROWTH: 1.2,
-    REBIRTH_ALLOWED_UNMAXED: 2,   // move to the next stage when at most this many upgrades are not maxed
+    REBIRTH_ALLOWED_UNMAXED: 8,   // move to the next stage when at most this many upgrades are not maxed
     STAGE_HARDNESS: 3.0,            // stage n costs x species mult x STAGE_HARDNESS^n (so later stages take longer)
     ACORNS_BASE: 8,               // acorns for clearing a stage: BASE + PER_STAGE*n + EXTRA per maxed upgrade beyond the rule
     ACORNS_PER_STAGE: 4,

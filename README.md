@@ -13,7 +13,7 @@ A 3D idle clicker that runs in the browser. Chop an endless tree, hire a crew, b
 - Timber Frenzy, Coffee Break boosts and the golden squirrel
 - 85 achievements and unlockable hats, beards and boots
 - Music and sound effects for every stage
-- Local accounts with 3 save profiles each, plus offline earnings
+- Accounts with 3 save profiles each, plus offline earnings. Accounts are local by default and become cloud accounts that work across devices once Firebase is set up (see `SETUP-FIREBASE.md`)
 
 ## Controls
 
@@ -25,4 +25,5 @@ A 3D idle clicker that runs in the browser. Chop an endless tree, hire a crew, b
 ```
 node tests/e2e.js   # full headless playthrough (needs Playwright)
 node tests/sim.js   # simulated pacing per stage
+node tests/cloud.js # cloud accounts (needs the Firebase emulators, see SETUP-FIREBASE.md)
 ```

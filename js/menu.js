@@ -125,7 +125,10 @@
   function renderProfiles(){
     const user = TCS.accounts.current;
     const U = TCS.util;
-    let html = `<div class="menu-head"><h2 class="outlined">${esc(user)}</h2>
+    const CL = TCS.cloud && TCS.cloud.active ? TCS.cloud : null;
+    // cloud mode: tiny cloud / offline icon next to the name (nothing in local mode)
+    const ico = CL ? `<span class="cloud-ico${CL.online ? '' : ' off'}" title="${CL.online ? 'Cloud save' : 'Offline'}"><svg viewBox="0 0 24 16" width="22" height="15" aria-hidden="true"><path d="M6 15h12a4.5 4.5 0 0 0 .6-9 6 6 0 0 0-11.5 1.6A3.7 3.7 0 0 0 6 15z" fill="#fff" stroke="#1b1b1b" stroke-width="2" stroke-linejoin="round"/><path class="slash" d="M4 1l16 14" stroke="#1b1b1b" stroke-width="2.4" stroke-linecap="round"/></svg></span>` : '';
+    let html = `<div class="menu-head"><h2 class="outlined">${esc(user)}${ico}</h2>
       <button class="btn menu-btn btn-grey btn-small" data-act="logout">Log Out</button></div><div class="slots">`;
     for (let s = 0; s < 3; s++){
       const info = TCS.state.slotInfo(user, s);
@@ -153,6 +156,13 @@
       }
     }
     panel.innerHTML = html + '</div>';
+    if (CL && !renderProfiles.syncing){
+      renderProfiles.syncing = true;
+      CL.syncSlots().then(changed => {
+        renderProfiles.syncing = false;
+        if (changed && screen === 'profiles' && TCS.accounts.current === user && !panel.contains(document.activeElement)) renderProfiles.again();
+      });
+    }
     panel.querySelector('[data-act=logout]').onclick = () => { click(); A_logout(); };
     panel.querySelectorAll('[data-slot]').forEach(el => {
       const slot = +el.dataset.slot;
@@ -171,6 +181,12 @@
       confirmBox.querySelector('[data-act=yes]').onclick = () => { click(); TCS.state.deleteSlot(user, slot); renderProfiles(); };
     });
   }
+
+  renderProfiles.again = () => { renderProfiles.syncing = true; try { renderProfiles(); } finally { renderProfiles.syncing = false; } };
+  bus.on('cloudStatus', e => { const i = panel && panel.querySelector('.cloud-ico'); if (i){ i.classList.toggle('off', !e.online); i.title = e.online ? 'Cloud save' : 'Offline'; } });
+
+  // a restored session that arrived after the menu already opened (slow network): go to profile select
+  bus.on('cloudUser', () => { if (screen === 'auth' && root && root.style.display !== 'none') render('profiles'); });
 
   function A_logout(){
     TCS.accounts.logout(); // unloads + emits 'logout'
@@ -199,6 +215,7 @@
     init(){
       build();
       if (/[?&]guest\b/.test(location.search)){ TCS.menu.startGame('guest', 0); return; }
+      if (TCS.cloud && TCS.cloud.active){ show(); TCS.cloud.ready.then(() => { if (screen === null && !TCS.state.loaded) TCS.menu.open(); }); return; }
       TCS.menu.open();
     },
     // open(screen?): show the title menu. Defaults to profile select when logged in, else Log In / Create.
@@ -210,6 +227,11 @@
       bus.emit('menuOpen');
     },
     startGame(username, slot){
+      const CL = TCS.cloud;
+      if (CL && CL.active && CL.uid && username === CL.username && !TCS.menu._pulled){
+        // pull the newest cloud copy of this slot first (falls back to the local cache when offline)
+        return CL.pullSlot(slot).finally(() => { TCS.menu._pulled = true; try { TCS.menu.startGame(username, slot); } finally { TCS.menu._pulled = false; } });
+      }
       TCS.accounts.current = username;
       TCS.state.load(username, slot);
       enterGame(username, slot);
