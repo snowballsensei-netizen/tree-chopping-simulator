@@ -104,6 +104,9 @@
 .seg button+button{border-left:3px solid var(--ink)}
 .seg button.on{background:#5ec2ff}
 .save-box{width:100%;height:68px;resize:none;border:3px solid var(--ink);border-radius:10px;padding:6px;font-family:monospace;font-size:12px;user-select:text;-webkit-user-select:text}
+.admin-box{display:flex;flex-direction:column;gap:6px;width:100%}
+.admin-box[hidden]{display:none}
+.adm-target,.adm-amt{width:100%;border:3px solid var(--ink);border-radius:10px;padding:6px 8px;font-family:var(--font);font-size:16px;background:#fff;color:var(--ink);user-select:text;-webkit-user-select:text}
 .set-btns{display:flex;gap:8px}
 .set-btns .btn{flex:1 1 0;font-size:19px;padding:6px 6px;min-width:0}
 .btn.red{background:#ff5a4f}
@@ -164,14 +167,30 @@
 @keyframes toastOut{to{transform:translateX(-30px);opacity:0}}
 
 /* ---------- offline card ---------- */
-#offline-card{position:absolute;left:calc((100% - var(--shop-w)) / 2);top:42%;transform:translate(-50%,-50%);padding:14px 26px;text-align:center;
-  display:flex;flex-direction:column;align-items:center;gap:4px;z-index:40;animation:popCard .4s cubic-bezier(.2,1.6,.4,1);max-width:90vw;background:#ffe9a8}
-#offline-card .oc-title{font-size:22px}
-#offline-card .oc-amt{font-size:34px}
-#offline-card .oc-time{font-size:17px}
-#offline-card .btn{margin-top:6px;padding:4px 30px;background:#6fd043}
-#offline-card.out{animation:toastOut .3s ease-in forwards}
+/* welcome-back screen: dims the game, blocks chopping until COLLECT */
+#offline-card{position:absolute;inset:0;z-index:60;pointer-events:auto;background:rgba(20,30,20,.45);animation:ocFade .25s ease-out}
+#offline-card.out{animation:ocFadeOut .3s ease-in forwards}
+#offline-card .oc-box{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(420px,90vw);max-height:88vh;overflow:auto;padding:16px 20px 18px;
+  text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px;background:#ffe9a8;animation:popCard .45s cubic-bezier(.2,1.6,.4,1)}
+#offline-card .oc-title{font-size:34px}
+#offline-card .oc-time{font-size:17px;opacity:.95}
+#offline-card .oc-time small{font-size:13px}
+#offline-card .oc-list{width:100%;display:flex;flex-direction:column;gap:5px;margin:4px 0}
+#offline-card .oc-row{display:flex;align-items:center;gap:9px;background:#fff;border:3px solid var(--ink,#1b1b1b);border-radius:12px;padding:4px 10px 4px 5px}
+#offline-card .oc-ic{flex:0 0 36px;width:36px;height:36px;display:grid;place-items:center}
+#offline-card .oc-ic img,#offline-card .oc-ic svg{width:36px;height:36px}
+#offline-card .oc-nm{flex:1;text-align:left;font-size:16px}
+#offline-card .oc-nm small{font-size:13px;opacity:.85}
+#offline-card .oc-v{font-size:17px;color:#7cf05a}
+#offline-card .oc-more{font-size:14px}
+#offline-card .oc-amt{font-size:40px;display:flex;align-items:center;gap:6px}
+#offline-card .oc-amt .mini{width:36px;height:36px;display:inline-grid}
+#offline-card .oc-amt .mini svg{width:36px;height:36px}
+#offline-card .oc-collect{margin-top:2px;padding:8px 44px;font-size:24px;background:#6fd043;animation:ocPulse 1.2s ease-in-out infinite}
 @keyframes popCard{from{transform:translate(-50%,-50%) scale(.4);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+@keyframes ocFade{from{opacity:0}to{opacity:1}}
+@keyframes ocFadeOut{to{opacity:0}}
+@keyframes ocPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 
 /* ---------- smaller screens ---------- */
 @media (max-height:760px), (max-width:1100px){
@@ -207,7 +226,6 @@
   /* phone: slim toast on the right, under the frenzy meter (clear of the HUD and the lumberjack) */
   #toasts{left:auto;right:var(--gap);top:116px;align-items:flex-end}
   .toast{font-size:14px;padding:3px 8px 3px 4px;max-width:200px} .toast small{font-size:11px} .t-icon{width:24px;height:24px;flex-basis:24px}
-  #offline-card{left:50%;top:30%}
   .card{min-height:58px;padding:5px 8px 5px 6px;gap:8px;border-width:3px}
   .c-icon{flex-basis:44px;width:44px;height:44px;font-size:25px}
   .c-name{font-size:17px} .c-eff{font-size:14px} .c-cost{font-size:15px} .c-owned{font-size:24px}

@@ -202,12 +202,12 @@
     // tunables
     PRICE_GROWTH: 1.2,
     REBIRTH_ALLOWED_UNMAXED: 2,   // move to the next stage when at most this many upgrades are not maxed
-    STAGE_HARDNESS: 3.4,            // stage n costs x species mult x STAGE_HARDNESS^n (so later stages take longer)
+    STAGE_HARDNESS: 2.5,            // stage n costs x species mult x STAGE_HARDNESS^n (so later stages take longer)
     ACORNS_BASE: 8,               // acorns for clearing a stage: BASE + PER_STAGE*n + EXTRA per maxed upgrade beyond the rule
     ACORNS_PER_STAGE: 4,
     ACORNS_EXTRA_MAXED: 3,
     ACORN_BONUS: 0.10,
-    OFFLINE_RATE: 0.5,
+    OFFLINE_RATE: 1,   // workers and machines keep full speed while you're away (capped by OFFLINE_CAP_H)
     OFFLINE_CAP_H: 8,
     FRENZY_DURATION: 20,
     FRENZY_MULT: 2,

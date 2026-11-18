@@ -349,9 +349,67 @@
       if (d.coffee.timeLeft > 0){ d.coffee.timeLeft = 0; d.coffee.cooldown = D.COFFEE_COOLDOWN; }
       d.coffee.cooldown = Math.max(0, d.coffee.cooldown - secs);
       const t = Math.min(secs, cap);
-      const amount = S.perSecond() * rate * t;
-      if (amount > 0 && secs > 5){ S.addWood(amount); bus.emit('offline', { amount, seconds: secs }); }
+      const mult = S.multiplier() * rate * t;
+      // per-worker/machine breakdown: every per-second upgrade kept working while away
+      const lines = [];
+      D.UPGRADES.forEach(u => {
+        if (u.type === 'click' || !(d.owned[u.id] > 0)) return;
+        const amt = S.upgradeOutput(u.id) * mult;
+        if (amt > 0) lines.push({ id: u.id, name: u.name, owned: d.owned[u.id], amount: amt });
+      });
+      const amount = lines.reduce((a, l) => a + l.amount, 0);
+      if (amount > 0 && secs > 5){
+        // held until the player presses COLLECT on the welcome-back screen (kept in the save if they leave first)
+        const p = d.pendingOffline;
+        if (p && p.amount > 0){
+          p.amount += amount; p.seconds += secs; p.capped = p.capped || secs > cap;
+          lines.forEach(l => { const o = p.lines.find(x => x.id === l.id); if (o){ o.amount += l.amount; o.owned = l.owned; } else p.lines.push(l); });
+        } else d.pendingOffline = { amount, seconds: secs, capped: secs > cap, capHours: cap / 3600, rate, lines };
+        d.pendingOffline.lines.sort((a, b) => b.amount - a.amount);
+      }
       return amount;
+    },
+    /* ---------- admin (only the "Shiv" account) ----------
+       Local-only like the accounts themselves: saves live in this browser's localStorage, so this
+       gates the UI, not real security. Only works while Shiv is the logged-in account. */
+    ADMIN_NAME: 'shiv',
+    isAdmin(){
+      const cur = TCS.accounts && TCS.accounts.current;
+      return !!cur && String(cur).toLowerCase() === S.ADMIN_NAME && !!TCS.accounts.find(cur);
+    },
+    // every saved profile on this device: [{username, slot, name, wood, self}]
+    adminTargets(){
+      if (!S.isAdmin()) return [];
+      const out = [];
+      TCS.accounts.list().forEach(a => {
+        for (let slot = 0; slot < 3; slot++){
+          const self = S.profile && S.profile.username.toLowerCase() === a.username.toLowerCase() && S.profile.slot === slot;
+          const d = self ? S.data : store.getJSON(S.key(a.username, slot), null);
+          if (d) out.push({ username: a.username, slot, name: d.profileName || ('Profile ' + (slot + 1)), wood: d.wood || 0, self });
+        }
+      });
+      return out;
+    },
+    // give n logs to a profile (the live one directly, others by editing their stored save)
+    adminGiveWood(username, slot, n){
+      if (!S.isAdmin() || !(n > 0) || !isFinite(n)) return false;
+      if (S.profile && S.profile.username.toLowerCase() === String(username).toLowerCase() && S.profile.slot === slot){
+        S.addWood(n); S.save(); return true;
+      }
+      const k = S.key(username, slot), d = store.getJSON(k, null);
+      if (!d) return false;
+      d.wood = (d.wood || 0) + n; d.runWood = (d.runWood || 0) + n; d.lifetimeWood = (d.lifetimeWood || 0) + n;
+      return store.setJSON(k, d);
+    },
+    // adds the held idle earnings to the wood counter; returns the amount
+    collectOffline(){
+      const p = S.data && S.data.pendingOffline;
+      if (!p || !(p.amount > 0)) return 0;
+      S.data.pendingOffline = null;
+      S.addWood(p.amount);
+      bus.emit('offlineCollected', { amount: p.amount });
+      S.save();
+      return p.amount;
     },
     exportSave(){ try { return btoa(unescape(encodeURIComponent(JSON.stringify(S.data)))); } catch(e){ return ''; } },
     importSave(b64){

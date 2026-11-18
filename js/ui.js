@@ -203,7 +203,9 @@
       toggle('settings');
     });
     // bus
-    bus.on('offline', e => offlineCard(e));
+    // show the welcome-back screen once the game view is up (after load / returning from the menu)
+    bus.on('load', () => setTimeout(offlineCard, 400));
+    bus.on('gameStart', () => setTimeout(offlineCard, 400));
     bus.on('achievement', e => { toastAch(e && e.ach); dirtyAch = true; });
     bus.on('owned', () => { revealKey = ''; techKey = ''; });
     bus.on('buy', () => { techKey = ''; });
@@ -427,6 +429,11 @@
       '<textarea class="save-box" spellcheck="false" placeholder="PASTE SAVE HERE"></textarea>' +
       '<div class="set-btns"><button class="btn b-export">EXPORT</button><button class="btn b-import">IMPORT</button></div>' +
       '<div class="save-msg outlined outlined-sm"></div>' +
+      '<div class="admin-box" hidden><div class="sec-title outlined">ADMIN</div>' +
+        '<select class="adm-target"></select>' +
+        '<input class="adm-amt" type="text" inputmode="decimal" placeholder="AMOUNT (E.G. 5000 OR 2.5M)">' +
+        '<div class="set-btns"><button class="btn b-give">GIVE LOGS</button></div>' +
+        '<div class="adm-msg outlined outlined-sm"></div></div>' +
       '<div class="set-btns"><button class="btn b-switch">SWITCH PROFILE</button><button class="btn red b-logout">LOG OUT</button></div>';
     st.ranges = p.querySelectorAll('input[type=range]');
     st.segs = p.querySelectorAll('.seg');
@@ -442,6 +449,17 @@
       const ok = st.box.value.trim() && S().importSave(st.box.value.trim());
       st.msg.textContent = ok ? 'SAVE LOADED' : 'INVALID SAVE';
     });
+    st.admin = p.querySelector('.admin-box'); st.admTarget = p.querySelector('.adm-target');
+    st.admAmt = p.querySelector('.adm-amt'); st.admMsg = p.querySelector('.adm-msg');
+    p.querySelector('.b-give').addEventListener('click', () => {
+      const s = S(); if (!s.isAdmin()) return;
+      const n = parseAmount(st.admAmt.value);
+      const [u, slot] = (st.admTarget.value || '').split('|');
+      if (!(n > 0)){ st.admMsg.textContent = 'ENTER AN AMOUNT'; return; }
+      const ok = s.adminGiveWood(u, +slot, n);
+      st.admMsg.textContent = ok ? 'GAVE ' + U.fmt(n) + ' LOGS' : 'FAILED';
+      if (ok) fillAdminTargets();
+    });
     p.querySelector('.b-switch').addEventListener('click', () => {
       try { TCS.menu.switchProfile(); } catch(e){ console.error(e); }
     });
@@ -449,8 +467,25 @@
       try { TCS.menu.logout(); } catch(e){ console.error(e); }
     });
   }
+  // "5000", "2.5k", "3M", "1e12", "1,000" -> number
+  function parseAmount(v){
+    v = String(v || '').trim().toLowerCase().replace(/[,\s]/g, '');
+    const m = v.match(/^(\d*\.?\d+(?:e\d+)?)([a-z]*)$/); if (!m) return NaN;
+    const suf = { '': 1, k: 1e3, m: 1e6, b: 1e9, t: 1e12, qa: 1e15, qi: 1e18, sx: 1e21, sp: 1e24, oc: 1e27, no: 1e30, dc: 1e33 }[m[2]];
+    return suf ? parseFloat(m[1]) * suf : NaN;
+  }
+  function fillAdminTargets(){
+    const keep = st.admTarget.value;
+    st.admTarget.innerHTML = S().adminTargets().map(t =>
+      '<option value="' + esc(t.username) + '|' + t.slot + '">' + (t.self ? 'ME' : esc(t.username)) + ' - ' + esc(t.name) +
+      ' (' + U.fmt(Math.floor(t.wood)) + ')</option>').join('');
+    if (keep && [...st.admTarget.options].some(o => o.value === keep)) st.admTarget.value = keep;
+  }
   function syncSettings(){
     if (!st.ranges) return;
+    const admin = !!(S().isAdmin && S().isAdmin());
+    st.admin.hidden = !admin;
+    if (admin){ fillAdminTargets(); st.admMsg.textContent = ''; }
     const set = S().data.settings;
     st.ranges.forEach(r => { if (document.activeElement !== r) r.value = set[r.dataset.k]; });
     st.segs.forEach(sg => sg.querySelectorAll('button').forEach(b => b.classList.toggle('on', set[sg.dataset.k] === b.dataset.v)));
@@ -496,17 +531,38 @@
     }
   }
   function toastAch(a){ if (a) toast('<b>' + esc(a.name) + '</b><br><small>' + esc(a.desc) + '</small>'); }
-  function offlineCard(e){
-    if (!e || !(e.amount > 0)) return;
+  // welcome-back screen: shows what the crew made while the player was away; wood is added on COLLECT
+  function offlineCard(){
+    const s = S(); const p = s && s.data && s.data.pendingOffline;
+    if (!p || !(p.amount > 0) || !shown) return;
     const layer = document.getElementById('ui-layer');
     const old = document.getElementById('offline-card'); if (old) old.remove();
-    const c = el('div', 'card-panel', '<div class="oc-title outlined">WHILE YOU WERE AWAY</div>' +
-      '<div class="oc-amt outlined"><i class="mini">' + ICONS.log + '</i>+' + U.fmt(e.amount) + ' WOOD</div>' +
-      (e.seconds ? '<div class="oc-time outlined outlined-sm">' + U.fmtTime(e.seconds) + '</div>' : '') + '<button class="btn">OK</button>', layer);
-    c.id = 'offline-card';
-    const close = () => { c.classList.add('out'); setTimeout(() => c.remove(), 300); };
-    c.querySelector('.btn').addEventListener('click', close);
-    setTimeout(close, 9000);
+    const rows = p.lines.slice(0, 6).map(l =>
+      '<div class="oc-row"><span class="oc-ic">' + upIcon(l.id) + '</span><span class="oc-nm outlined outlined-sm">' + esc(l.name) +
+      ' <small>x' + l.owned + '</small></span><span class="oc-v outlined outlined-sm">+' + U.fmt(l.amount) + '</span></div>').join('') +
+      (p.lines.length > 6 ? '<div class="oc-more outlined outlined-sm">+' + (p.lines.length - 6) + ' MORE</div>' : '');
+    const wrap = el('div', '', '', layer); wrap.id = 'offline-card';
+    const c = el('div', 'card-panel oc-box',
+      '<div class="oc-title outlined">WELCOME BACK!</div>' +
+      '<div class="oc-time outlined outlined-sm">AWAY ' + U.fmtTime(p.seconds) + (p.capped ? ' <small>(MAX ' + p.capHours + 'H)</small>' : '') + '</div>' +
+      '<div class="oc-list">' + rows + '</div>' +
+      '<div class="oc-amt outlined"><i class="mini">' + ICONS.log + '</i>+' + U.fmt(p.amount) + '</div>' +
+      '<button class="btn oc-collect">COLLECT</button>', wrap);
+    const btn = c.querySelector('.oc-collect');
+    let done = false;
+    const collect = () => {
+      if (done) return; done = true;
+      const amt = s.collectOffline();
+      try { TCS.audio.play('buy'); } catch(e){}
+      // a shower of wood chips flies from the tree into the HUD counter
+      const sc = TCS.scene;
+      for (let i = 0; i < 8; i++) setTimeout(() => { try { sc.spawnChips(sc.tree.impactPoint(), 3, true); } catch(e){} }, i * 70);
+      wrap.classList.add('out'); setTimeout(() => wrap.remove(), 300);
+      return amt;
+    };
+    btn.addEventListener('click', e => { e.stopPropagation(); collect(); });
+    wrap.addEventListener('pointerdown', e => e.stopPropagation());
+    TCS.ui._collectOffline = collect;
   }
 
   /* ---------- per frame ---------- */
