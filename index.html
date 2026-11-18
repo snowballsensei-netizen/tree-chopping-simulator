@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Tree Chopping Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Patrick+Hand+SC&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/ui.css">
+<link rel="stylesheet" href="css/menu.css">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="game">
+  <canvas id="c"></canvas>
+  <div id="ui-layer"></div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+window.THREE = THREE;
+const files = ['util','data','state','scene','world','upgrades3d','audio','fx','ui','accounts','menu','main'];
+function load(i){
+  if (i >= files.length) return;
+  const s = document.createElement('script');
+  s.src = 'js/' + files[i] + '.js';
+  s.onload = () => load(i + 1);
+  s.onerror = () => { console.error('Failed to load js/' + files[i] + '.js'); load(i + 1); };
+  document.body.appendChild(s);
+}
+load(0);
+</script>
+</body>
+</html>

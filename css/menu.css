@@ -1,0 +1,71 @@
+/* menu.css — title screen, login/create, profile select */
+#menu-root{position:absolute;inset:0;pointer-events:none;font-family:var(--font)}
+#menu-root > *{pointer-events:auto}
+#menu-root .menu-vignette{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(90deg,rgba(10,20,30,.42) 0%,rgba(10,20,30,.22) 28%,rgba(10,20,30,0) 50%),
+    radial-gradient(ellipse 120% 95% at 60% 50%,rgba(0,0,0,0) 55%,rgba(0,0,0,.32) 100%)}
+#menu-root .menu-col{position:absolute;left:clamp(20px,4.5vw,80px);top:50%;transform:translateY(-50%);width:min(36vw,500px);min-width:360px;
+  max-height:calc(100% - 24px);display:flex;flex-direction:column;align-items:center;gap:clamp(8px,2.2vh,26px);pointer-events:none}
+#menu-root .menu-col > *{pointer-events:auto}
+#menu-root .menu-logo{width:100%;pointer-events:none;filter:drop-shadow(0 6px 0 rgba(0,0,0,.25));animation:logoBob 3.2s ease-in-out infinite;flex:none}
+#menu-root .tcs-logo-svg{width:100%;height:auto;display:block;overflow:visible}
+@keyframes logoBob{0%,100%{transform:translateY(0)}50%{transform:translateY(8px)}}
+
+#menu-root .menu-panel{position:relative;width:min(100%,400px);min-height:0;overflow:auto;padding:22px 24px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box;
+  box-shadow:0 8px 0 rgba(0,0,0,.22),0 18px 40px rgba(0,0,0,.25)}
+#menu-root.wide .menu-panel{width:min(100%,440px)}
+#menu-root h2{margin:0;font-size:30px;font-weight:normal;line-height:1.1;--stroke:3px;word-break:break-all}
+#menu-root .menu-btn{width:100%;font-size:30px;padding:10px 16px}
+#menu-root .menu-panel[data-screen=auth] .menu-btn{font-size:34px;padding:14px 16px}
+#menu-root .btn-green{background:#62c94a}
+#menu-root .btn-red{background:#ff6b5e}
+#menu-root .btn-grey{background:#aab4bd}
+#menu-root .btn-small{font-size:20px;padding:4px 12px;width:auto}
+#menu-root .btn:focus-visible,#menu-root .slot-empty:focus-visible{outline:3px solid #ffd23f;outline-offset:2px}
+
+#menu-root .menu-form{display:flex;flex-direction:column;gap:8px;margin:0}
+#menu-root .menu-field{display:flex;flex-direction:column;gap:2px;font-size:20px}
+#menu-root input{font-family:var(--font);font-size:22px;padding:6px 10px;border:3px solid #1b1b1b;border-radius:10px;
+  background:#f3f6f8;color:#1b1b1b;outline:none;width:100%;box-sizing:border-box;min-width:0}
+#menu-root input:focus{background:#fff;border-color:#2b8fd6}
+#menu-root input.bad{border-color:#e0392b;background:#fff1ef}
+#menu-root .menu-err{font-style:normal;color:#d42d1f;font-size:18px;min-height:0;line-height:1.1}
+#menu-root .menu-err:empty{display:none}
+#menu-root .menu-row{display:flex;gap:10px;margin-top:4px}
+#menu-root .menu-row .menu-btn{flex:1}
+
+#menu-root .menu-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#menu-root .slots{display:flex;flex-direction:column;gap:10px}
+#menu-root .slot{border:3px solid #1b1b1b;border-radius:14px;background:#eef3f6;padding:10px;display:flex;flex-direction:column;gap:6px;
+  box-shadow:0 3px 0 rgba(0,0,0,.2)}
+#menu-root .slot-empty{min-height:92px;align-items:center;justify-content:center;cursor:pointer;font-family:var(--font);font-size:30px;
+  background:repeating-linear-gradient(-45deg,#e6edf2 0 14px,#dde6ec 14px 28px);border-style:dashed}
+#menu-root .slot-empty:hover{background:#d5f0cc}
+#menu-root .slot-empty:active{transform:translateY(2px)}
+#menu-root .slot-name{font-size:24px;padding:2px 8px;background:transparent;border-color:transparent}
+#menu-root .slot-name:hover{border-color:#b9c4cc}
+#menu-root .slot-name:focus{background:#fff;border-color:#2b8fd6}
+#menu-root .slot-stats{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;font-size:18px;color:#1b1b1b}
+#menu-root .slot-stats span{display:flex;justify-content:space-between;gap:6px;min-width:0;white-space:nowrap;overflow:hidden}
+#menu-root .slot-stats b{font-weight:normal;color:#6b7a85}
+#menu-root .slot-actions,#menu-root .slot-confirm{display:flex;gap:8px;align-items:center}
+#menu-root .slot-actions .btn{flex:1}
+#menu-root .slot-confirm span{flex:1;font-size:20px;color:#ff6b5e}
+#menu-root [hidden]{display:none !important}
+
+@media (max-width:820px){
+  #menu-root .menu-vignette{background:linear-gradient(180deg,rgba(10,20,30,.25) 0%,rgba(10,20,30,0) 30%,rgba(10,20,30,0) 55%,rgba(10,20,30,.4) 100%)}
+  #menu-root .menu-col{left:50%;top:10px;bottom:14px;transform:translateX(-50%);width:min(calc(100% - 32px),420px);min-width:0;max-height:none;justify-content:space-between}
+  #menu-root .menu-logo{width:min(92%,440px)}
+  #menu-root .menu-panel,#menu-root.wide .menu-panel{width:100%;max-width:380px}
+  #menu-root .slot-empty{min-height:56px;font-size:26px}
+}
+@media (max-height:560px) and (min-width:821px){
+  #menu-root .menu-col{width:min(32vw,400px);min-width:300px}
+  #menu-root .menu-panel{padding:14px 18px;gap:10px}
+}
+/* narrow title (<=820px): logo top-left, the tree trunk stands on the right third (scene.js cam.phoneTitleShift) */
+@media (max-width:820px){
+  #menu-root .menu-logo{width:62%;align-self:flex-start;margin-left:-6px}
+}
+@media (min-width:600px) and (max-width:820px){ #menu-root .menu-logo{width:76%} }

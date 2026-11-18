@@ -1,0 +1,65 @@
+/* Base styles (phase 1). Other phases: put your styles in css/ui.css and css/menu.css. */
+:root{
+  --font:'Patrick Hand SC','Comic Sans MS',cursive;
+  --ink:#1b1b1b;
+  --stroke:3px;
+  --panel:#ffffff;
+  --panel-border:#1b1b1b;
+  --grey:#b9b9b9;
+  --gold:#ffc83a;
+  --green:#6FD043;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#8EE05C;font-family:var(--font);
+  user-select:none;-webkit-user-select:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#game{position:fixed;inset:0}
+#c{position:absolute;inset:0;width:100%;height:100%;display:block;outline:none}
+#ui-layer{position:absolute;inset:0;pointer-events:none;z-index:10}
+#ui-layer > *{pointer-events:auto}
+#ui-layer > .passthrough,#ui-layer > .float-num,#ui-layer > #hud{pointer-events:none}
+
+/* White text with thick dark outline. Use on every label. */
+.outlined{color:#fff;-webkit-text-stroke:var(--stroke) var(--ink);paint-order:stroke fill;
+  text-transform:uppercase;letter-spacing:.5px;font-family:var(--font)}
+.outlined-sm{--stroke:2px}
+
+/* Top-left HUD */
+#hud{position:absolute;left:18px;top:12px;display:flex;flex-direction:column;gap:2px;pointer-events:none}
+#hud .row{display:flex;align-items:center;gap:10px;font-size:34px;line-height:1.1}
+#hud .row.small{font-size:24px}
+#hud .icon{width:40px;height:40px;flex:0 0 40px;display:inline-block}
+#hud .row.small .icon{width:30px;height:30px;flex-basis:30px}
+#hud .icon svg{width:100%;height:100%;overflow:visible}
+#hud #hud-height{font-size:18px;opacity:.95;margin-top:2px}
+.bounce{animation:hudBounce .25s ease-out}
+@keyframes hudBounce{0%{transform:scale(1)}40%{transform:scale(1.35)}100%{transform:scale(1)}}
+
+/* Floating +N numbers (spawned by scene.js in screen space) */
+.float-num{position:absolute;pointer-events:none;font-size:46px;line-height:1;transform:translate(-50%,-50%);
+  --stroke:6px;white-space:nowrap;z-index:20;will-change:transform,opacity;
+  text-shadow:0 4px 0 rgba(0,0,0,.35)}
+.float-num.big{font-size:56px}
+.float-num.crit{font-size:58px;color:#ffe25a}
+.float-num.crit.big{font-size:68px}
+@media (max-width:600px){.float-num{font-size:36px;--stroke:5px}.float-num.big{font-size:44px}.float-num.crit{font-size:46px}}
+
+/* Generic white card panel used by shop/menus */
+.card-panel{background:var(--panel);border:4px solid var(--panel-border);border-radius:18px;
+  box-shadow:0 6px 0 rgba(0,0,0,.25)}
+.btn{font-family:var(--font);font-size:22px;cursor:pointer;border:3px solid var(--ink);border-radius:12px;
+  background:#5ec2ff;padding:6px 14px;color:#fff;-webkit-text-stroke:2px var(--ink);paint-order:stroke fill;
+  box-shadow:0 4px 0 var(--ink);text-transform:uppercase}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
+
+/* narrower screens: a subtle dark backing keeps the HUD readable over scene models */
+@media (max-width:1100px){
+  #hud{left:8px;top:8px;padding:4px 14px 5px 8px;border-radius:14px;background:rgba(20,28,16,.32)}
+}
+@media (max-width:700px){
+  #hud{gap:0;padding:3px 10px 4px 6px}
+  #hud .row{font-size:23px;gap:6px}
+  #hud .icon{width:26px;height:26px;flex-basis:26px}
+  #hud .row.small{font-size:16px}
+  #hud .row.small .icon{width:20px;height:20px;flex-basis:20px}
+  #hud #hud-height{font-size:14px;margin-top:0}
+}
