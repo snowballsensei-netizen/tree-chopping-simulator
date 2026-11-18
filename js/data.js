@@ -202,7 +202,7 @@
     // tunables
     PRICE_GROWTH: 1.2,
     REBIRTH_ALLOWED_UNMAXED: 2,   // move to the next stage when at most this many upgrades are not maxed
-    STAGE_HARDNESS: 2.5,            // stage n costs x species mult x STAGE_HARDNESS^n (so later stages take longer)
+    STAGE_HARDNESS: 3.0,            // stage n costs x species mult x STAGE_HARDNESS^n (so later stages take longer)
     ACORNS_BASE: 8,               // acorns for clearing a stage: BASE + PER_STAGE*n + EXTRA per maxed upgrade beyond the rule
     ACORNS_PER_STAGE: 4,
     ACORNS_EXTRA_MAXED: 3,
