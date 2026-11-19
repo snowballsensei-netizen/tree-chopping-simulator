@@ -2,7 +2,9 @@
 
 A 3D idle clicker that runs in the browser. Chop an endless tree, hire a crew, build machines, max out every upgrade, then replant and move to a whole new place.
 
-**Play:** open `index.html` in a browser. No install or build step needed.
+**[▶ Play it in your browser](https://snowballsensei-netizen.github.io/tree-chopping-simulator/)** (works on PC and phone)
+
+To run it locally, open `index.html` in a browser. No install or build step needed.
 
 ## Features
 
