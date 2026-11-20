@@ -98,7 +98,7 @@
 
     /* ---------- shop ---------- */
     // stage cost scaling: species mult x hardness^stage, so bonuses never make a later stage faster
-    costMult(){ return S.species().totalMult * Math.pow(D.STAGE_HARDNESS, S.data.speciesIndex); },
+    costMult(){ const n = S.data.speciesIndex, k = D.STAGE_TAPER_FROM; return S.species().totalMult * Math.pow(D.STAGE_HARDNESS, Math.min(n, k)) * Math.pow(D.STAGE_TAPER, Math.max(0, n - k)); },
     stage(i){
       if (i === undefined) i = S.data.speciesIndex;
       const st = D.STAGES[i % D.STAGES.length], tier = Math.floor(i / D.STAGES.length);

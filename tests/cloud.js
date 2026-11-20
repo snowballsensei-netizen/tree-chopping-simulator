@@ -74,6 +74,7 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
   let failed = false;
   try {
     const user = 'Cloud_' + Date.now().toString(36).slice(-5), pass = 'maple123';
+    if (!process.env.DUELS_ONLY) {   // DUELS_ONLY=1 runs just the friends/duels part
 
     // ---- device A: sign up, play, save
     const A = await device();
@@ -180,7 +181,7 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     check('log out signs out', await B.page.evaluate(() => !TCS.cloud.uid && TCS.menu.screen === 'auth'));
 
     // ---- migration: a local account on this device moves to the cloud on first cloud login
-    const M = await device('');   // local mode (no ?emu)
+    const M = await device('?local');   // local mode (no ?emu)
     const mu = 'local_' + Date.now().toString(36).slice(-4);
     await form(M.page, true, mu, 'birch123'); await toProfiles(M.page);
     await M.page.click('.slot-empty[data-slot="0"]'); await loaded(M.page);
@@ -204,6 +205,126 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     const off = await O.page.evaluate(() => ({ fb: !!TCS.fb, uid: TCS.cloud.uid, ico: !!document.querySelector('.cloud-ico.off'), info: TCS.state.slotInfo(TCS.cloud.username, 0) }));
     check('offline: cached session + slots, offline icon', !off.fb && off.uid === uidA && off.ico && off.info && off.info.wood >= G, off);
     await O.ctx.close();
+    await Promise.all([A, B, Z, M].map(x => x.ctx.close()));   // fewer WebGL pages for the duel part
+    }
+
+    // ---- friends + duels: two fresh accounts P and Q, plus an outsider R
+    const sfx = Date.now().toString(36).slice(-5), pn = 'Pduel_' + sfx, qn = 'Qduel_' + sfx;
+    const P = await device(), Q = await device();
+    for (const [X, n] of [[P, pn], [Q, qn]]) {
+      await form(X.page, true, n, 'duel1234'); await toProfiles(X.page);
+      await X.page.click('.slot-empty[data-slot="0"]'); await loaded(X.page);
+      await X.page.waitForFunction(() => TCS.friends.active, null, { timeout: 10000 });
+      await X.page.evaluate(() => { window.__res = []; TCS.bus.on('duelResult', e => __res.push(e)); });
+    }
+    const uidP = await P.page.evaluate(() => TCS.cloud.uid), uidQ = await Q.page.evaluate(() => TCS.cloud.uid);
+    const setBal = (X, w, a) => X.page.evaluate(async ([w, a]) => { const d = TCS.state.data; d.wood = w; d.acorns = a; TCS.state.save(); await TCS.friends.writePresence(); }, [w, a]);
+    await setBal(P, 1e6, 50); await setBal(Q, 5e5, 20);
+    check('friends button shown in cloud mode', await P.page.isVisible('.friends-btn'));
+    await P.page.keyboard.press('f');
+    check('F opens the friends panel', await P.page.isVisible('#friends-panel'));
+    await P.page.fill('#friends-panel .fr-add', qn.toLowerCase()); await P.page.press('#friends-panel .fr-add', 'Enter');
+    await Q.page.waitForFunction(u => !!TCS.friends.incoming[u], uidP, { timeout: 10000 }).catch(() => {});
+    check('friend request arrives + badge dot', await Q.page.evaluate(u => !!TCS.friends.incoming[u], uidP) && await Q.page.$('.friends-btn.dot') !== null);
+    await Q.page.keyboard.press('f');
+    await Q.page.click('#friends-panel .fr-row.req [data-act=acc]');
+    await P.page.waitForFunction(u => !!TCS.friends.friends[u], uidQ, { timeout: 10000 }).catch(() => {});
+    await Q.page.waitForFunction(u => !!TCS.friends.friends[u], uidP, { timeout: 10000 }).catch(() => {});
+    check('friend request accepted (both sides)', await P.page.evaluate(u => !!TCS.friends.friends[u], uidQ) && await Q.page.evaluate(u => !!TCS.friends.friends[u] && !Object.keys(TCS.friends.incoming).length, uidP));
+    await P.page.keyboard.press('Escape'); await Q.page.keyboard.press('Escape');
+
+    // insufficient funds: at send (own + opponent's published balance), at accept, and in the rules
+    const bad1 = await P.page.evaluate(u => TCS.friends.challenge(u, 'logs', 5e6), uidQ);
+    const bad2 = await P.page.evaluate(u => TCS.friends.challenge(u, 'logs', '600k'), uidQ);
+    const bad3 = await P.page.evaluate(u => TCS.friends.challenge(u, 'acorns', 30), uidQ);
+    const rulesFunds = await P.page.evaluate(async u => {
+      const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app);
+      try { await F.addDoc(F.collection(db, 'duels'), { a: TCS.cloud.uid, b: u, aName: TCS.cloud.username, bName: 'x', kind: 'logs', amount: 9e5, status: 'pending', createdAt: F.serverTimestamp(), startAt: null, ta: null, tb: null, pa: 0, pb: 0, winner: '', endAt: null, paidA: false, paidB: false }); return 'allowed'; }
+      catch (e) { return e.code; }
+    }, uidQ);
+    check('insufficient funds rejected at send (+ rules)', !bad1.ok && /not enough/i.test(bad1.error) && !bad2.ok && /match/i.test(bad2.error) && !bad3.ok && rulesFunds === 'permission-denied', { bad1, bad2, bad3, rulesFunds });
+    const small = await P.page.evaluate(u => TCS.friends.challenge(u, 'logs', 1000), uidQ);
+    await Q.page.waitForFunction(id => TCS.friends.duels[id], small.id, { timeout: 10000 });
+    await setBal(Q, 500, 20);
+    const bad4 = await Q.page.evaluate(id => TCS.friends.acceptDuel(id), small.id);
+    check('insufficient funds rejected at accept', small.ok && !bad4.ok && /not enough/i.test(bad4.error), { small, bad4 });
+    const R = await device(); await form(R.page, true, 'Rout_' + sfx, 'duel1234'); await toProfiles(R.page);
+    const outsider = await R.page.evaluate(async id => {
+      const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app), out = {};
+      try { await F.getDoc(F.doc(db, 'duels', id)); out.read = 'allowed'; } catch (e) { out.read = e.code; }
+      try { await F.updateDoc(F.doc(db, 'duels', id), { status: 'declined' }); out.write = 'allowed'; } catch (e) { out.write = e.code; }
+      return out;
+    }, small.id).catch(e => ({ err: e.message }));
+    check('rules: a third user cannot read/update the duel', outsider.read === 'permission-denied' && outsider.write === 'permission-denied', outsider);
+    await Q.page.evaluate(id => TCS.friends.declineDuel(id), small.id);
+    await P.page.waitForFunction(id => !TCS.friends.duels[id] || TCS.friends.duels[id].status === 'declined', small.id, { timeout: 10000 }).catch(() => {});
+    await setBal(Q, 5e5, 20);
+
+    // logs duel: Q mashes Space and wins 200k; P barely chops
+    const W = 2e5;
+    const dl = await P.page.evaluate(u => TCS.friends.challenge(u, 'logs', '200k'), uidQ);
+    await Q.page.waitForSelector('.duel-card', { timeout: 10000 }).catch(() => {});
+    check('incoming duel card shown', dl.ok && await Q.page.$('.duel-card') !== null, dl);
+    await Q.page.click('.duel-card [data-act=acc]');
+    await P.page.waitForFunction(() => !!TCS.friends.live, null, { timeout: 10000 }).catch(() => {});
+    await Q.page.waitForFunction(() => !!TCS.friends.live, null, { timeout: 10000 }).catch(() => {});
+    check('both players enter the duel overlay', await P.page.$('#duel-ov') !== null && await Q.page.$('#duel-ov') !== null);
+    const preChop = await Q.page.evaluate(() => TCS.friends.chop());
+    await Q.page.waitForTimeout(3300);
+    // a cheating finish (100 chops right after GO) is rejected by the rules' click-rate cap
+    const cheat = await P.page.evaluate(async id => {
+      const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app);
+      try { await F.updateDoc(F.doc(db, 'duels', id), { status: 'done', winner: TCS.cloud.uid, endAt: F.serverTimestamp(), pa: 100, ta: F.serverTimestamp() }); return 'allowed'; } catch (e) { return e.code; }
+    }, dl.id);
+    const burst = await Q.page.evaluate(() => { let n = 0; for (let i = 0; i < 60; i++) if (TCS.friends.chop()) n++; return n; });
+    check('anti-cheat: no chops before GO, burst capped, rules reject a fake finish', !preChop && burst <= 20 && cheat === 'permission-denied', { preChop, burst, cheat });
+    await Q.page.waitForTimeout(1000);
+    for (let i = 0; i < 400; i++) {
+      if (await Q.page.evaluate(() => !TCS.friends.live || TCS.friends.live.mine >= TCS.data.DUEL_HP)) break;
+      await Q.page.keyboard.press('Space'); if (i % 8 === 0) await P.page.keyboard.press('Space');
+      await Q.page.waitForTimeout(60);
+    }
+    const oppSeen = await P.page.evaluate(() => TCS.friends.live ? TCS.friends.live.opp : -1);
+    check('opponent progress shows live', oppSeen > 20, oppSeen);
+    await P.page.waitForFunction(() => __res.length >= 1, null, { timeout: 20000 }).catch(() => {});
+    await Q.page.waitForFunction(() => __res.length >= 1, null, { timeout: 20000 }).catch(() => {});
+    const rp = await P.page.evaluate(() => ({ res: __res, wood: TCS.state.data.wood, txt: (document.querySelector('.dv-result') || {}).textContent }));
+    const rq = await Q.page.evaluate(() => ({ res: __res, wood: TCS.state.data.wood, txt: (document.querySelector('.dv-result') || {}).textContent }));
+    check('exactly one winner (Q won, P lost)', rp.res.length === 1 && rq.res.length === 1 && rq.res[0].won && !rp.res[0].won, { p: rp.res, q: rq.res });
+    check('balances after logs duel', Math.abs(rp.wood - (1e6 - W)) < 1 && Math.abs(rq.wood - (5e5 + W)) < 1, { p: rp.wood, q: rq.wood });
+    check('result line shown', /you won \+200K logs/i.test(rq.txt || '') && /you lost/i.test(rp.txt || ''), [rp.txt, rq.txt]);
+    await Q.page.waitForTimeout(4500);
+    check('result auto-closes', await Q.page.$('#duel-ov') === null);
+    const cq = await cloudDoc(Q.page, uidQ, 0);
+    check('winnings flushed to the cloud save', cq && Math.abs(cq.parsed.wood - (5e5 + W)) < 1, cq && cq.parsed.wood);
+    await P.page.waitForTimeout(1500);
+    const gone = await P.page.evaluate(async id => { const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app); try { return (await F.getDoc(F.doc(db, 'duels', id))).exists(); } catch (e) { return e.code; } }, dl.id);
+    check('duel doc cleaned up after both paid', gone === false || gone === 'permission-denied', gone);
+
+    // payout exactly once across a reload
+    await Q.page.evaluate(() => TCS.menu.switchProfile()); await Q.page.reload();
+    await Q.page.waitForFunction(() => window.TCS && TCS.ready && TCS.menu.screen === 'profiles', null, { timeout: 60000 }).catch(async e => { console.log('menu state', await Q.page.evaluate(() => JSON.stringify({ s: TCS.menu && TCS.menu.screen, u: TCS.cloud.username, uid: TCS.cloud.uid, fb: !!TCS.fb, loaded: TCS.state.loaded, keys: Object.keys(localStorage) }))); throw e; });
+    await Q.page.evaluate(() => TCS.menu.startGame(TCS.cloud.username, 0)); await loaded(Q.page);
+    await Q.page.waitForFunction(() => TCS.friends.active, null, { timeout: 10000 });
+    await Q.page.waitForTimeout(2500);
+    const wq2 = await Q.page.evaluate(() => { window.__res = []; TCS.bus.on('duelResult', e => __res.push(e)); return TCS.state.data.wood; });
+    check('no double payout after reload', Math.abs(wq2 - (5e5 + W)) < 1, wq2);
+
+    // acorn duel: P wins 5 acorns
+    const da = await P.page.evaluate(u => TCS.friends.challenge(u, 'acorns', 5), uidQ);
+    await Q.page.waitForFunction(id => TCS.friends.duels[id] && TCS.friends.duels[id].status === 'pending', da.id, { timeout: 10000 }).catch(() => {});
+    const accA = await Q.page.evaluate(id => TCS.friends.acceptDuel(id), da.id);
+    await P.page.waitForFunction(() => !!TCS.friends.live, null, { timeout: 10000 }).catch(() => {});
+    await P.page.waitForTimeout(3300);
+    for (let i = 0; i < 400; i++) {
+      if (await P.page.evaluate(() => !TCS.friends.live || TCS.friends.live.mine >= TCS.data.DUEL_HP)) break;
+      await P.page.keyboard.press('Space'); await P.page.waitForTimeout(60);
+    }
+    await P.page.waitForFunction(() => __res.length >= 2, null, { timeout: 20000 }).catch(() => {});
+    await Q.page.waitForFunction(() => __res.length >= 1, null, { timeout: 20000 }).catch(() => {});
+    const ap = await P.page.evaluate(() => ({ a: TCS.state.data.acorns, r: __res[1] })), aq = await Q.page.evaluate(() => ({ a: TCS.state.data.acorns, r: __res[0] }));
+    check('acorn wager: winner +5, loser -5', da.ok && accA.ok && ap.a === 55 && aq.a === 15 && ap.r && ap.r.won && aq.r && !aq.r.won, { da, accA, ap, aq });
+    await P.ctx.close(); await Q.ctx.close(); await R.ctx.close();
 
     check('no unexpected console errors', errs.length === 0, errs.slice(0, 5));
   } catch (e) { console.error(e); failed = true; }

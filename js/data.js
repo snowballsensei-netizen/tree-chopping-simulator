@@ -203,6 +203,8 @@
     PRICE_GROWTH: 1.2,
     REBIRTH_ALLOWED_UNMAXED: 8,   // move to the next stage when at most this many upgrades are not maxed
     STAGE_HARDNESS: 3.0,            // stage n costs x species mult x STAGE_HARDNESS^n (so later stages take longer)
+    STAGE_TAPER_FROM: 2,          // after this many stages, each further stage only costs x STAGE_TAPER more (eases late rebirths)
+    STAGE_TAPER: 1.6,
     ACORNS_BASE: 8,               // acorns for clearing a stage: BASE + PER_STAGE*n + EXTRA per maxed upgrade beyond the rule
     ACORNS_PER_STAGE: 4,
     ACORNS_EXTRA_MAXED: 3,
@@ -216,6 +218,8 @@
     COFFEE_MULT: 2,
     CHOPS_PER_SEGMENT: 6,
     SEGMENT_METRES: 2,
+    // friend duels (cloud only). DUEL_HP / DUEL_MAX_CPS / DUEL_COUNTDOWN are mirrored in firestore.rules (duelCap)
+    DUEL_HP: 100, DUEL_MAX_CPS: 20, DUEL_COUNTDOWN: 3, DUEL_EXPIRE: 120, DUEL_FORFEIT: 15,
     SAVE_VERSION: 2
   };
 })();

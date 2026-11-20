@@ -203,3 +203,12 @@ Per-stage place: ground checker colours, sky/fog/light tint, merged decor (one d
 
 ### Tests
 `node tests/e2e.js` (Playwright; set `NODE_PATH` to a node_modules with playwright) — 41 checks incl. world stage + stage track after rebirth, Esc, v1 migration, file:// load.
+
+## Friends + duels (js/friends.js, css/friends.css) — cloud accounts only
+Hidden unless `TCS.cloud.active`, the SDK loaded and the loaded slot belongs to the signed-in cloud user. Starts on `load`, stops on `unload`/`logout`.
+- UI: a people button appended to `#outfit-btns` (red dot = pending requests/challenges) + key F → `#friends-panel` (username input, Enter sends; requests with ✓/✕; friends with online dot + ⚔; hover/long-press shows a tiny × to remove). ⚔ swaps the row into an amount input (k/M/B…) + logs/acorn toggle, Enter sends. Incoming challenges: `#duel-cards` (top centre). Duel: `#duel-ov` overlay (3-2-1, click/tap/Space chops, HP bar + both players' bars), then one result line that closes after 3.5 s or a click. While `TCS.duel` is true a capture keydown handler eats Space/Esc/F, so the idle game gets no input (income keeps ticking).
+- Firestore: `friendReqs/{from}_{to}`, `friends/{uid}/list/{other}`, `presence/{uid}` (lastSeen + wood/acorns, every 60 s), `duels/{id}` — see the header of friends.js and `firestore.rules`.
+- Duel rules: funds checked against both players' presence at create and accept; each player writes only `pa/ta` or `pb/tb` (≤4/s, 3 s heartbeat); ≤20 chops/s since GO (client and rules); winner set once in a transaction (100 chops, or forfeit when the opponent sent nothing for 15 s); pending challenges expire after 2 min. Payout: loser −wager (clamped at 0), winner +wager (wood, not lifetimeWood), saved + flushed, then `paidA/paidB`; `S.data.duelsPaid` keeps it once per save across reloads. Doc deleted when both paid.
+- Tunables in data.js: `DUEL_HP 100, DUEL_MAX_CPS 20, DUEL_COUNTDOWN 3, DUEL_EXPIRE 120, DUEL_FORFEIT 15` (the rules hard-code the same numbers).
+- API `TCS.friends`: `request(name)`, `accept/decline(uid)`, `remove(uid)`, `challenge(uid, 'logs'|'acorns', amount|'2.5k')`, `acceptDuel/declineDuel(id)`, `chop()`, `toggle()`; bus `duelResult {id, won, kind, amount}`.
+- `?local` URL flag forces local accounts (no Firebase); tests/e2e.js uses it.

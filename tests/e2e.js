@@ -57,7 +57,7 @@ async function snapshot(page) {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await ctx.newPage();
     const errs = []; watch(page, errs);
-    await page.goto(base);
+    await page.goto(base + '?local');
     await page.waitForFunction(() => window.TCS && TCS.ready, null, { timeout: 30000 });
     await page.waitForTimeout(600);
 
@@ -234,7 +234,7 @@ async function snapshot(page) {
     const ctx3 = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     // ---- distinct models + icons (separate guest context)
     { const page = await ctx3.newPage(); watch(page, errs);
-    await page.goto(base + '?guest');
+    await page.goto(base + '?local&guest');
     await page.waitForFunction(() => window.TCS && TCS.ready, null, { timeout: 30000 });
     await page.waitForTimeout(500);
     await page.evaluate(() => { TCS.state.addWood(1e30); for (const u of TCS.data.UPGRADES) TCS.state.buy(u.id); });
@@ -264,7 +264,7 @@ async function snapshot(page) {
     // ---- file:// load
     const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const p2 = await ctx2.newPage(); const errs2 = []; watch(p2, errs2);
-    await p2.goto('file:///' + path.join(ROOT, 'index.html').replace(/\\/g, '/') + '?guest');
+    await p2.goto('file:///' + path.join(ROOT, 'index.html').replace(/\\/g, '/') + '?local&guest');
     let ready = true;
     try { await p2.waitForFunction(() => window.TCS && TCS.ready, null, { timeout: 30000 }); } catch (e) { ready = false; }
     if (ready) { await p2.waitForTimeout(800); await p2.mouse.click(400, 400); await p2.waitForTimeout(500); }

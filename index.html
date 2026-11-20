@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/ui.css">
 <link rel="stylesheet" href="css/menu.css">
+<link rel="stylesheet" href="css/friends.css">
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
 </script>
@@ -22,7 +23,7 @@
 <script type="module">
 import * as THREE from 'three';
 window.THREE = THREE;
-const files = ['util','data','state','scene','world','upgrades3d','audio','fx','ui','accounts','cloud','menu','main'];
+const files = ['util','data','state','scene','world','upgrades3d','audio','fx','ui','accounts','cloud','friends','menu','main'];
 function load(i){
   if (i >= files.length) return;
   const s = document.createElement('script');
@@ -36,7 +37,8 @@ function load(i){
 async function boot(){
   const T = window.TCS = window.TCS || {};
   const emu = /[?&]emu\b/.test(location.search);
-  if (!T.FIREBASE_CONFIG && emu) T.FIREBASE_CONFIG = { apiKey: 'demo-key', authDomain: 'demo-tcs.firebaseapp.com', projectId: 'demo-tcs', appId: 'demo' };
+  if (/[?&]local\b/.test(location.search)) T.FIREBASE_CONFIG = null;   // ?local: force local accounts (tests)
+  if (emu) T.FIREBASE_CONFIG = { apiKey: 'demo-key', authDomain: 'demo-tcs.firebaseapp.com', projectId: 'demo-tcs', appId: 'demo' };
   if (T.FIREBASE_CONFIG){
     try {
       const B = 'https://www.gstatic.com/firebasejs/10.12.2/';

@@ -74,6 +74,119 @@ service cloud.firestore {
       }
     }
 
+    /* ---------- friends ---------- */
+    // friendReqs/{from}_{to} = {from, to, fromName, at}: the sender creates, sender or recipient reads/deletes (decline, cancel, accept cleanup)
+    match /friendReqs/{rid} {
+      allow read: if signedIn() && (resource == null || resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['from', 'to', 'fromName', 'at'])
+        && request.resource.data.keys().hasAll(['from', 'to', 'fromName', 'at'])
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.to is string && request.resource.data.to != request.auth.uid
+        && rid == request.auth.uid + '_' + request.resource.data.to
+        && request.resource.data.fromName is string && ownsName(request.resource.data.fromName.lower())
+        && request.resource.data.at == request.time
+        && !exists(/databases/$(database)/documents/friends/$(request.auth.uid)/list/$(request.resource.data.to));
+      allow delete: if signedIn() && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow update: if false;
+    }
+    // friends/{owner}/list/{other} = {uid: other, username, at}. Only the RECIPIENT of a pending request can create
+    // both sides (one batch that also deletes the request). Either friend can delete both sides (remove friend).
+    match /friends/{owner}/list/{other} {
+      allow read: if isOwner(owner);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'username', 'at'])
+        && request.resource.data.keys().hasAll(['uid', 'username', 'at'])
+        && request.resource.data.uid == other && other != owner
+        && request.resource.data.at == request.time
+        && request.resource.data.username is string && request.resource.data.username.size() <= 16
+        && get(/databases/$(database)/documents/usernames/$(request.resource.data.username.lower())).data.uid == other
+        && ((request.auth.uid == owner && exists(/databases/$(database)/documents/friendReqs/$(other + '_' + owner)))
+          || (request.auth.uid == other && exists(/databases/$(database)/documents/friendReqs/$(owner + '_' + other))));
+      allow update: if false;
+      allow delete: if isOwner(owner) || isOwner(other);
+    }
+    // presence/{uid} = {username, lastSeen, wood, acorns}: online dot + the balances the duel rules check
+    match /presence/{uid} {
+      allow read: if signedIn();
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['username', 'lastSeen', 'wood', 'acorns'])
+        && request.resource.data.keys().hasAll(['username', 'lastSeen', 'wood', 'acorns'])
+        && request.resource.data.username is string && ownsName(request.resource.data.username.lower())
+        && request.resource.data.lastSeen == request.time
+        && num(request.resource.data.wood) && num(request.resource.data.acorns);
+      allow delete: if false;
+    }
+
+    /* ---------- duels ---------- */
+    // duels/{id}: a = challenger, b = challenged. status pending -> accepted -> done (or declined / cancelled).
+    // pa/pb = chops (only that player writes it, with ta/tb = request.time), winner set once in a transaction,
+    // paidA/paidB = that player's client applied the payout. Keep 100 / 20 / 3 / 120 / 15 in sync with js/data.js DUEL_*.
+    match /duels/{id} {
+      function O() { return resource.data; }
+      function N() { return request.resource.data; }
+      function changed() { return N().diff(O()).affectedKeys(); }
+      function involved() { return signedIn() && (O().a == request.auth.uid || O().b == request.auth.uid); }
+      function field(kind) { return kind == 'logs' ? 'wood' : 'acorns'; }
+      function hasFunds(uid, kind, amount) {
+        return get(/databases/$(database)/documents/presence/$(uid)).data[field(kind)] >= amount;
+      }
+      // anti-cheat: at most 20 chops/s since GO (startAt + 3 s countdown), +5 slack
+      function cap() { return 20.0 * ((request.time.toMillis() - O().startAt.toMillis()) / 1000.0 - 3.0) + 5.0; }
+      function okChops(p) {
+        return N()[p] is int && N()[p] >= O()[p] && N()[p] <= 100 && (N()[p] == O()[p] || N()[p] <= cap());
+      }
+      function progress(side, p, t) {
+        return request.auth.uid == O()[side] && O().status == 'accepted' && N().status == 'accepted'
+          && changed().hasOnly([p, t]) && N()[t] == request.time && okChops(p);
+      }
+      // first finisher (100 chops) or forfeit: the opponent sent nothing for 15 s after GO
+      function finish(side, p, t, ot) {
+        return request.auth.uid == O()[side] && O().status == 'accepted' && N().status == 'done'
+          && changed().hasOnly(['status', 'winner', 'endAt', p, t])
+          && N().winner == request.auth.uid && N().endAt == request.time && N()[t] == request.time && okChops(p)
+          && (N()[p] == 100 || (request.time > O()[ot] + duration.value(15, 's') && request.time > O().startAt + duration.value(18, 's')));
+      }
+      function paid(side, f) {
+        return request.auth.uid == O()[side] && O().status == 'done' && changed().hasOnly([f]) && N()[f] == true;
+      }
+      function accept() {
+        return request.auth.uid == O().b && O().status == 'pending' && N().status == 'accepted'
+          && request.time < O().createdAt + duration.value(120, 's')
+          && changed().hasOnly(['status', 'startAt', 'ta', 'tb'])
+          && N().startAt == request.time && N().ta == request.time && N().tb == request.time
+          && hasFunds(O().a, O().kind, O().amount) && hasFunds(O().b, O().kind, O().amount);
+      }
+      function decline() {
+        return request.auth.uid == O().b && O().status == 'pending' && N().status == 'declined' && changed().hasOnly(['status']);
+      }
+      // the challenger withdraws, or either player aborts during the countdown (e.g. funds gone)
+      function cancel() {
+        return N().status == 'cancelled' && changed().hasOnly(['status'])
+          && ((O().status == 'pending' && request.auth.uid == O().a)
+            || (O().status == 'accepted' && request.time < O().startAt + duration.value(3, 's')));
+      }
+
+      allow read: if signedIn() && (resource.data.a == request.auth.uid || resource.data.b == request.auth.uid);
+      allow create: if signedIn()
+        && N().keys().hasOnly(['a', 'b', 'aName', 'bName', 'kind', 'amount', 'status', 'createdAt', 'startAt', 'ta', 'tb', 'pa', 'pb', 'winner', 'endAt', 'paidA', 'paidB'])
+        && N().keys().hasAll(['a', 'b', 'aName', 'bName', 'kind', 'amount', 'status', 'createdAt', 'startAt', 'ta', 'tb', 'pa', 'pb', 'winner', 'endAt', 'paidA', 'paidB'])
+        && N().a == request.auth.uid && N().b is string && N().b != request.auth.uid
+        && exists(/databases/$(database)/documents/friends/$(request.auth.uid)/list/$(N().b))
+        && N().aName is string && ownsName(N().aName.lower()) && N().bName is string && N().bName.size() <= 16
+        && N().status == 'pending' && N().kind in ['logs', 'acorns']
+        && num(N().amount) && N().amount > 0 && (N().kind == 'logs' || N().amount is int)
+        && N().createdAt == request.time && N().startAt == null && N().ta == null && N().tb == null && N().endAt == null
+        && N().pa == 0 && N().pb == 0 && N().winner == '' && N().paidA == false && N().paidB == false
+        && hasFunds(N().a, N().kind, N().amount) && hasFunds(N().b, N().kind, N().amount);
+      allow update: if involved() && (accept() || decline() || cancel()
+        || progress('a', 'pa', 'ta') || progress('b', 'pb', 'tb')
+        || finish('a', 'pa', 'ta', 'tb') || finish('b', 'pb', 'tb', 'ta')
+        || paid('a', 'paidA') || paid('b', 'paidB'));
+      allow delete: if involved() && (O().status in ['declined', 'cancelled'] || (O().status == 'done' && O().paidA && O().paidB)
+        || (O().status == 'pending' && request.time > O().createdAt + duration.value(120, 's')));
+    }
+
     // admin player list: collection-group query over every slots collection
     match /{path=**}/slots/{slot} {
       allow read: if isShiv();

@@ -46,11 +46,37 @@
     root = document.createElement('div');
     root.id = 'menu-root';
     root.className = 'passthrough';
-    root.innerHTML = `<div class="menu-vignette"></div><div class="menu-col"><div class="menu-logo">${LOGO_SVG}</div><div class="menu-panel card-panel" role="dialog"></div></div>`;
+    root.innerHTML = `<div class="menu-vignette"></div><div class="menu-online card-panel" aria-live="off"><i class="online-dot"></i><b class="online-n">0</b> <span><span class="online-pl">players </span>online</span></div><div class="menu-col"><div class="menu-logo">${LOGO_SVG}</div><div class="menu-panel card-panel" role="dialog"></div></div>`;
     document.getElementById('ui-layer').appendChild(root);
     logo = root.querySelector('.menu-logo');
     panel = root.querySelector('.menu-panel');
     panel.addEventListener('pointerdown', e => e.stopPropagation());
+    startOnline(root.querySelector('.online-n'));
+  }
+
+  // "players online" counter: drifts slowly within 500..2200, a new value every 10 s, counted up/down over ~2 s
+  const ONLINE = { MIN: 500, MAX: 2200, EVERY: 10000, TWEEN: 2000 };
+  function startOnline(el){
+    let shown = 900 + Math.floor(Math.random() * 900), trend = Math.random() < 0.5 ? -1 : 1, anim = 0;
+    const fmt = n => Math.round(n).toLocaleString('en-US');
+    el.textContent = fmt(shown);
+    TCS.menu._online = () => shown;
+    setInterval(() => {
+      if (root.style.display === 'none') return;           // only tick while the menu is showing
+      if (Math.random() < 0.25) trend = -trend;            // gentle wandering, not jitter
+      let next = shown + trend * (8 + Math.floor(Math.random() * 45));
+      if (next > ONLINE.MAX){ next = ONLINE.MAX - (next - ONLINE.MAX); trend = -1; }
+      if (next < ONLINE.MIN){ next = ONLINE.MIN + (ONLINE.MIN - next); trend = 1; }
+      const from = shown, t0 = performance.now();
+      shown = next;
+      cancelAnimationFrame(anim);
+      const step = now => {
+        const k = Math.min(1, (now - t0) / ONLINE.TWEEN), e = k * (2 - k);
+        el.textContent = fmt(from + (next - from) * e);
+        if (k < 1) anim = requestAnimationFrame(step);
+      };
+      anim = requestAnimationFrame(step);
+    }, ONLINE.EVERY);
   }
 
   function render(name){
