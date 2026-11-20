@@ -3,8 +3,9 @@
      friendReqs/{from}_{to} = {from, to, fromName, at}         sender creates; recipient accepts (batch: both friends docs + delete) or declines
      friends/{uid}/list/{other} = {uid, username, at}         both sides written by the recipient on accept
      presence/{uid} = {username, lastSeen, wood, acorns}      every 60 s while playing (online dot + balances the duel rules check)
-     duels/{id} = {a, b, aName, bName, kind:'logs'|'acorns', amount, status, createdAt, startAt, ta, tb, pa, pb, winner, endAt, paidA, paidB}
-   Duel: pending (2 min) -> accepted (3-2-1, then chop DUEL_HP times) -> done (winner via transaction). Each player writes only
+     duels/{id} = {a, b, aName, bName, kind:'logs'|'acorns', amount, status, createdAt, startAt, ta, tb, pa, pb, winner, endAt, paidA, paidB,
+                   aStage, aCos (challenger's look, at create), bStage, bCos (challenged's look, at accept)}   stage 0..7, cos 'hat|face|boots'
+   Duel: pending (2 min) -> accepted (VS intro + 3-2-1, then chop DUEL_HP times) -> done (winner via transaction). Each player writes only
    its own pa/ta (<= 4/s + 3 s heartbeat). Payout once per player: S.data.duelsPaid ids + paidA/paidB on the doc.
    UI: friends button next to the outfit buttons + F, one compact panel, incoming duel cards, duel overlay, one-line result.
    API (TCS.friends): active, friends, incoming, duels, live, request(name), accept(uid), decline(uid), remove(uid),
@@ -18,6 +19,7 @@
   let db; try { db = F.getFirestore(fb.app); } catch(e){ return; }
 
   const HP = D.DUEL_HP || 100, CPS = D.DUEL_MAX_CPS || 20, CD = (D.DUEL_COUNTDOWN || 3) * 1000;
+  const INTRO = (D.DUEL_INTRO || 0) * 1000;
   const EXPIRE = (D.DUEL_EXPIRE || 120) * 1000, FORFEIT = (D.DUEL_FORFEIT || 15) * 1000, ONLINE_MS = 150000;
   const S = () => TCS.state;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -34,6 +36,12 @@
     return suf ? Math.floor(parseFloat(m[1]) * suf) : NaN;
   };
   FR.parseAmount = parseAmount;
+  // my look for the opponent's vignette: stage (speciesIndex % 8) + equipped cosmetic ids 'hat|face|boots'
+  function look(){
+    const d = S().data || {}, eq = d.equipped || {}, v = d.speciesIndex != null ? d.speciesIndex : (d.species || 0);
+    return { stage: ((Math.floor(v) || 0) % 8 + 8) % 8, cos: ['hat', 'face', 'boots'].map(k => String(eq[k] || '').slice(0, 15)).join('|') };
+  }
+  FR.look = look;
   FR.writePresence = () => writePresence();
 
   let me = null, unsubs = [], presTimer = null, ui = null;
@@ -150,7 +158,8 @@
     await writePresence();
     try {
       const ref = await F.addDoc(F.collection(db, 'duels'), { a: me, b: uid, aName: C.username, bName: f.username, kind, amount,
-        status: 'pending', createdAt: F.serverTimestamp(), startAt: null, ta: null, tb: null, pa: 0, pb: 0, winner: '', endAt: null, paidA: false, paidB: false });
+        status: 'pending', createdAt: F.serverTimestamp(), startAt: null, ta: null, tb: null, pa: 0, pb: 0, winner: '', endAt: null, paidA: false, paidB: false,
+        aStage: look().stage, aCos: look().cos });
       return { ok: true, id: ref.id };
     } catch(e){ console.warn(e); return err('Could not send'); }
   };
@@ -163,7 +172,7 @@
     const p = await presenceOf(d.a);
     if (!p || (d.kind === 'acorns' ? p.acorns : p.wood) < d.amount) return err(d.aName + " can't pay that now");
     await writePresence();
-    try { const st = F.serverTimestamp(); await F.updateDoc(dref(id), { status: 'accepted', startAt: st, ta: st, tb: st }); return { ok: true }; }
+    try { const st = F.serverTimestamp(); const lk = look(); await F.updateDoc(dref(id), { status: 'accepted', startAt: st, ta: st, tb: st, bStage: lk.stage, bCos: lk.cos }); return { ok: true }; }
     catch(e){ console.warn(e); return err('Could not accept'); }
   };
   FR.declineDuel = id => F.updateDoc(dref(id), { status: 'declined' }).then(() => ({ ok: true }), () => err('Failed'));
@@ -228,7 +237,7 @@
     const L = FR.live = { id: d.id, d, side, p: 'p' + side, t: 't' + side, op: 'p' + o, ot: 't' + o,
       opName: side === 'a' ? d.bName : d.aName, kind: d.kind, amount: d.amount,
       mine: d['p' + side] || 0, sent: d['p' + side] || 0, opp: d['p' + o] || 0, oppT: ms(d['t' + o]), oppSeen: now,
-      goAt: now + Math.max(0, CD - since), clicks: [], lastWrite: 0, finishing: false, lastForfeit: 0, done: false };
+      goAt: now + Math.max(0, CD - since), introAge: since, clicks: [], lastWrite: 0, finishing: false, lastForfeit: 0, done: false, fellAt: 0 };
     TCS.duel = true;
     close();
     buildOverlay();
@@ -239,7 +248,12 @@
   }
   function liveSnap(d){
     const L = FR.live; L.d = d;
-    if (d[L.op] !== L.opp || ms(d[L.ot]) !== L.oppT){ L.opp = d[L.op] || 0; L.oppT = ms(d[L.ot]); L.oppSeen = performance.now(); }
+    if (d[L.op] !== L.opp || ms(d[L.ot]) !== L.oppT){
+      const n = d[L.op] || 0, add = n - L.opp;
+      L.opp = n; L.oppT = ms(d[L.ot]); L.oppSeen = performance.now();
+      if (add > 0 && TCS.duel3d) TCS.duel3d.chop('op', add);
+      if (n >= HP) fall('op');
+    }
     if (d.status === 'done') L.done = true;
     drawLive();
   }
@@ -276,14 +290,21 @@
     if (L.clicks.length >= CPS || L.mine >= CPS * (now - L.goAt) / 1000 + 5) return false;   // anti-cheat: plausible click rate only
     L.clicks.push(now); L.mine++;
     sfx('chop');
-    if (ui && ui.tree){ ui.tree.classList.remove('hit'); void ui.tree.offsetWidth; ui.tree.classList.add('hit'); }
-    if (L.mine >= HP) finish();
+    if (TCS.duel3d) TCS.duel3d.chop('me');
+    if (L.mine >= HP){ fall('me'); finish(); }
     drawLive();
     return true;
   };
+  function fall(side){
+    const L = FR.live; if (!L || L['fell_' + side]) return;
+    L['fell_' + side] = true; if (!L.fellAt) L.fellAt = performance.now();
+    if (TCS.duel3d) TCS.duel3d.fall(side);
+  }
   function endLive(silent){
     const L = FR.live; if (!L) return;
-    clearInterval(L.timer); FR.live = null; TCS.duel = false;
+    clearInterval(L.timer); clearTimeout(L.resWait); FR.live = null; TCS.duel = false;
+    try { TCS.duel3d && TCS.duel3d.stop(); } catch(e){ console.warn(e); }
+    document.body.classList.remove('duel-on');
     if (ui && ui.ov){ ui.ov.remove(); ui.ov = null; }
     if (!silent) render();
   }
@@ -391,41 +412,65 @@
   FR.toggle = () => (ui && !ui.panel.hidden ? close() : FR.open());
   bus.on('menuOpen', close);
 
-  // duel overlay: big tree + HP bar, both players' bars, 3-2-1, then one-line result
-  const TREE = '<svg viewBox="0 0 120 170"><g stroke="#1b1b1b" stroke-width="5" stroke-linejoin="round"><rect x="47" y="92" width="26" height="70" rx="6" fill="#a8693a"/>' +
-    '<path class="dv-notch" d="M73 128 l-14 6 l14 6 z" fill="#f2cf8c"/><circle cx="60" cy="60" r="44" fill="#6fd043"/><circle cx="34" cy="74" r="22" fill="#5cbf35"/><circle cx="86" cy="74" r="22" fill="#5cbf35"/></g>' +
-    '<ellipse cx="60" cy="164" rx="40" ry="6" fill="rgba(0,0,0,.25)"/></svg>';
+  // duel overlay: wager (small), two 3D vignettes (js/duel3d.js draws them into .dv-view with the main renderer), each with
+  // its name + HP bar, a short VS intro, 3-2-1, then one result line over the vignettes
+  function slot(cls, name){
+    return '<div class="dv-slot ' + cls + '"><div class="dv-view"></div><div class="dv-name outlined outlined-sm">' + esc(name) + '</div>' +
+      '<div class="dv-hp"><i></i><span class="outlined outlined-sm"></span></div></div>';
+  }
   function buildOverlay(){
     if (!buildUi()) return;
-    const ov = ui.ov = document.createElement('div');
+    const L = FR.live, d = L.d, ov = ui.ov = document.createElement('div');
+    const meName = C.username || 'You';
     ov.id = 'duel-ov';
-    ov.innerHTML = '<div class="dv-wager outlined">' + U.fmt(FR.live.amount) + ' <i class="dc-ic">' + icon(FR.live.kind) + '</i></div>' +
-      '<div class="dv-hp"><i></i><span class="outlined outlined-sm"></span></div><div class="dv-tree">' + TREE + '</div>' +
-      '<div class="dv-bars"><div class="dv-bar me"><span class="outlined outlined-sm">YOU</span><b><i></i></b></div>' +
-      '<div class="dv-bar op"><span class="outlined outlined-sm">' + esc(FR.live.opName) + '</span><b><i></i></b></div></div>' +
+    ov.innerHTML = '<div class="dv-wager outlined outlined-sm">' + U.fmt(L.amount) + ' <i class="dc-ic">' + icon(L.kind) + '</i></div>' +
+      '<div class="dv-arena">' + slot('me', meName) + slot('op', L.opName) + '</div>' +
+      '<div class="dv-curtain"></div>' +
+      '<div class="dv-vs"><span class="vs-a outlined">' + esc(meName) + '</span><b class="vs-x outlined">VS</b><span class="vs-b outlined">' + esc(L.opName) + '</span></div>' +
       '<div class="dv-big outlined"></div>';
-    ov.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); if (ov._res) return closeResult(); FR.chop(); });
+    ov.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); if (ov._res){ if (ov._shown) closeResult(); return; } FR.chop(); });
     layer().appendChild(ov);
-    ui.tree = ov.querySelector('.dv-tree');
-    ui.dv = { hp: ov.querySelector('.dv-hp i'), hpT: ov.querySelector('.dv-hp span'), me: ov.querySelector('.dv-bar.me i'), op: ov.querySelector('.dv-bar.op i'), big: ov.querySelector('.dv-big'), notch: ov.querySelector('.dv-notch') };
+    document.body.classList.add('duel-on');
+    // VS intro, synced to the shared startAt (skipped when joining late)
+    if (INTRO && L.introAge < INTRO){
+      ov.classList.add('intro');
+      ov.style.setProperty('--intro-age', (-L.introAge / 1000) + 's');
+      setTimeout(() => { if (ui.ov === ov) ov.classList.remove('intro'); }, INTRO - L.introAge + 50);
+    }
+    const q = c => ov.querySelector(c);
+    ui.dv = { meHp: q('.dv-slot.me .dv-hp i'), meT: q('.dv-slot.me .dv-hp span'), opHp: q('.dv-slot.op .dv-hp i'), opT: q('.dv-slot.op .dv-hp span'), big: q('.dv-big') };
+    const mineLook = look(), oSide = L.side === 'a' ? 'b' : 'a';
+    const opLook = { stage: d[oSide + 'Stage'], cos: d[oSide + 'Cos'] };   // missing on old docs -> default look
+    try {
+      if (TCS.duel3d) TCS.duel3d.start({ me: { el: q('.dv-slot.me .dv-view'), stage: mineLook.stage, cos: mineLook.cos },
+        op: { el: q('.dv-slot.op .dv-view'), stage: opLook.stage | 0, cos: opLook.cos || '' } });
+    } catch(e){ console.error('duel vignettes', e); }
   }
   function drawLive(){
     const L = FR.live; if (!L || !ui || !ui.dv || ui.ov._res) return;
-    const v = ui.dv, left = Math.max(0, HP - L.mine), now = performance.now();
-    v.hp.style.width = (left / HP * 100) + '%'; v.hpT.textContent = left + ' HP';
-    v.me.style.width = Math.min(100, L.mine / HP * 100) + '%'; v.op.style.width = Math.min(100, L.opp / HP * 100) + '%';
-    v.notch.setAttribute('transform', 'translate(' + (-16 * L.mine / HP) + ' 0) scale(1 1)');
-    const c = Math.ceil((L.goAt - now) / 1000);
-    const t = c > 0 ? String(c) : now - L.goAt < 700 ? 'CHOP!' : L.done || L.mine >= HP ? '...' : '';
+    const v = ui.dv, now = performance.now();
+    const bar = (el, tx, n) => { const left = Math.max(0, HP - n); el.style.width = (left / HP * 100) + '%'; tx.textContent = left + ' HP'; };
+    bar(v.meHp, v.meT, L.mine); bar(v.opHp, v.opT, L.opp);
+    const left = L.goAt - now, c = Math.ceil(left / 1000);
+    const t = left > 3000 ? '' : c > 0 ? String(c) : now - L.goAt < 700 ? 'CHOP!' : '';
     if (v.big._t !== t){ v.big._t = t; v.big.textContent = t; v.big.classList.remove('pop'); void v.big.offsetWidth; if (t) v.big.classList.add('pop'); }
   }
   function showResult(msg, won){
     const L = FR.live; if (!L || !ui.ov) return toast(esc(msg));
     clearInterval(L.timer); L.done = true;
-    ui.ov._res = true; ui.ov.classList.add('result', won ? 'won' : 'lost');
-    ui.ov.innerHTML = '<div class="dv-result outlined">' + esc(msg) + '</div>';
-    sfx(won ? 'fanfare' : 'denied');
-    ui.resT = setTimeout(closeResult, 3500);
+    if (!won && L.opp >= HP) fall('op');
+    drawLive();
+    // let the winner's tree finish falling first
+    const wait = L.fellAt ? Math.max(0, 1400 - (performance.now() - L.fellAt)) : 0;
+    ui.ov._res = true;
+    L.resWait = setTimeout(() => {
+      if (!ui.ov || FR.live !== L) return;
+      ui.ov._shown = true; ui.ov.classList.add('result', won ? 'won' : 'lost');
+      const big = ui.ov.querySelector('.dv-big'); if (big) big.textContent = '';
+      const r = document.createElement('div'); r.className = 'dv-result outlined'; r.textContent = msg; ui.ov.appendChild(r);
+      sfx(won ? 'fanfare' : 'denied');
+      ui.resT = setTimeout(closeResult, 3500);
+    }, wait);
   }
   function closeResult(){ clearTimeout(ui && ui.resT); endLive(); }
 
@@ -434,7 +479,7 @@
     if (!FR.live) return;
     if (e.code === 'Space' || e.key === 'Escape' || e.code === 'KeyF'){ e.preventDefault(); e.stopImmediatePropagation(); }
     if (e.code === 'Space' && !e.repeat) FR.chop();
-    if (e.key === 'Escape' && ui && ui.ov && ui.ov._res) closeResult();
+    if (e.key === 'Escape' && ui && ui.ov && ui.ov._shown) closeResult();
   }, true);
   window.addEventListener('keydown', e => {
     if (e.code !== 'KeyF' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;

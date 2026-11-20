@@ -59,6 +59,7 @@
   gradientMap.minFilter = gradientMap.magFilter = THREE.NearestFilter;
   gradientMap.generateMipmaps = false;
   gradientMap.needsUpdate = true;
+  gradientMap.userData.shared = true;
 
   const matCache = new Map();
   // toon(color, opts?) -> cached MeshToonMaterial. opts: {emissive, emissiveIntensity, opacity, map, nocache}
@@ -70,12 +71,13 @@
     if (opts.emissive != null){ m.emissive = new THREE.Color(opts.emissive); m.emissiveIntensity = opts.emissiveIntensity != null ? opts.emissiveIntensity : 1; }
     if (opts.map) m.map = opts.map;
     if (opts.opacity != null){ m.transparent = true; m.opacity = opts.opacity; }
-    if (key) matCache.set(key, m);
+    if (key){ m.userData.shared = true; matCache.set(key, m); }
     return m;
   }
 
   /* ---------- outlines (inverted hull) ---------- */
   const outlineMat = new THREE.MeshBasicMaterial({ color: 0x1b1b1b, side: THREE.BackSide });
+  outlineMat.userData.shared = true;
   const outlines = new Set();
   let outlinesOn = true;
   // outline(mesh, thickness=0.06, opts?) -> black BackSide child, uniformly scaled 1+thickness.
@@ -105,6 +107,15 @@
   // trackOutlines(root): register outline hulls inside a cloned object so the Low-graphics toggle reaches them
   function trackOutlines(root){ root.traverse(o => { if (o.userData.isOutline){ outlines.add(o); o.visible = outlinesOn; } }); return root; }
   function forgetOutlines(root){ root.traverse(o => { if (o.userData.isOutline) outlines.delete(o); }); }
+  // disposeTree(root): free the GPU resources of a discarded object tree, skipping anything shared/cached (userData.shared)
+  function disposeTree(root){
+    const seen = new Set(), tex = m => ['map', 'emissiveMap', 'alphaMap'].forEach(k => { const t = m[k]; if (t && !t.userData.shared && !seen.has(t)){ seen.add(t); t.dispose(); } });
+    forgetOutlines(root);
+    root.traverse(o => {
+      if (o.geometry && !o.geometry.userData.shared && !seen.has(o.geometry)){ seen.add(o.geometry); o.geometry.dispose(); }
+      [].concat(o.material || []).forEach(m => { if (m && !m.userData.shared && !seen.has(m)){ seen.add(m); tex(m); m.dispose(); } });
+    });
+  }
 
   /* ---------- model helper ---------- */
   const geoCache = new Map();
@@ -124,6 +135,7 @@
       case 'ico': g = new THREE.IcosahedronGeometry(size[0], size[1] || 0); break;
       default: throw new Error('model.part: unknown type ' + type);
     }
+    g.userData.shared = true;
     geoCache.set(key, g);
     return g;
   }
@@ -164,7 +176,7 @@
       const x = c.getContext('2d'); const gr = x.createRadialGradient(32, 32, 4, 32, 32, 32);
       gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.6, 'rgba(0,0,0,0.8)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
       x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
-      shadowTex = new THREE.CanvasTexture(c);
+      shadowTex = new THREE.CanvasTexture(c); shadowTex.userData.shared = true;
     }
     const m = new THREE.Mesh(new THREE.PlaneGeometry(radius * 2, radius * 2),
       new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, opacity: opacity == null ? 0.3 : opacity, depthWrite: false }));
@@ -221,6 +233,6 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
 
-  TCS.util = { fmt, fmtTime, toon, gradientMap, outline, setOutlines, forgetOutlines, trackOutlines, get outlinesOn(){ return outlinesOn; },
+  TCS.util = { fmt, fmtTime, toon, gradientMap, outline, setOutlines, forgetOutlines, trackOutlines, disposeTree, get outlinesOn(){ return outlinesOn; },
     outlineMaterial: outlineMat, blobShadow, tween, updateTweens, popIn, squash, ease, rand, clamp, lerp };
 })();

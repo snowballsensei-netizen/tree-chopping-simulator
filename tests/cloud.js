@@ -2,6 +2,7 @@
    Start the emulators from the project root first (uses firebase.json + firestore.rules):
      npx firebase-tools emulators:start --only auth,firestore --project demo-tcs
    then:  node tests/cloud.js     (the page is opened with ?emu, which uses a demo config + the local emulators)
+   SHOTS=<dir> also saves duel screenshots (desktop logs duel seen by Q, phone 390x844 acorn duel seen by P).
    Exit code 0 = all passed. */
 const http = require('http');
 const fs = require('fs');
@@ -151,6 +152,20 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     const left = await B.page.evaluate(async uid => { const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app); return (await F.getDocs(F.collection(db, 'users', uid, 'grants'))).size; }, uidA);
     check('grant consumed (deleted)', left === 0, left);
 
+    // ---- admin gives acorns, takes logs, takes acorns (never below 0)
+    const a0 = await B.page.evaluate(() => ({ w: TCS.state.data.wood, a: TCS.state.data.acorns || 0, e: TCS.state.data.acornsEarned || 0 }));
+    check('admin give acorns written', await Z.page.evaluate(k => TCS.state.adminAdjust(k, 0, 'acorns', 12), row.key));
+    await B.page.waitForFunction(a => (TCS.state.data.acorns || 0) >= a + 12, a0.a, { timeout: 15000 }).catch(() => {});
+    const a1 = await B.page.evaluate(() => ({ w: TCS.state.data.wood, a: TCS.state.data.acorns, e: TCS.state.data.acornsEarned }));
+    check('acorns arrive (spendable + bonus)', a1.a === a0.a + 12 && a1.e === a0.e + 12, { a0, a1 });
+    check('admin take logs written', await Z.page.evaluate(k => TCS.state.adminAdjust(k, 0, 'logs', -1e9), row.key));
+    check('admin take acorns written', await Z.page.evaluate(k => TCS.state.adminAdjust(k, 0, 'acorns', -5), row.key));
+    await B.page.waitForFunction(([w, a]) => TCS.state.data.wood <= w - 1e9 + 1e6 && TCS.state.data.acorns === a - 5, [a1.w, a1.a], { timeout: 15000 }).catch(() => {});
+    const a2 = await B.page.evaluate(() => ({ w: TCS.state.data.wood, a: TCS.state.data.acorns, e: TCS.state.data.acornsEarned }));
+    check('logs + acorns taken on the running client', a2.w <= a1.w - 1e9 + 1e6 && a2.a === a1.a - 5 && a2.e === a1.e - 5, { a1, a2 });
+    check('take never below 0', await Z.page.evaluate(k => TCS.state.adminAdjust(k, 0, 'acorns', -1e6), row.key) &&
+      await B.page.waitForFunction(() => TCS.state.data.acorns === 0, null, { timeout: 15000 }).then(() => true, () => false));
+
     // ---- rules: a normal player can't read others' saves / write grants / claim names
     const uidZ = await Z.page.evaluate(() => TCS.cloud.uid);
     const denied = await B.page.evaluate(async uidZ => {
@@ -159,12 +174,14 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
       await t('readOther', () => F.getDoc(F.doc(db, 'users', uidZ, 'slots', '0')));
       await t('groupQuery', () => F.getDocs(F.query(F.collectionGroup(db, 'slots'), F.limit(5))));
       await t('grant', () => F.addDoc(F.collection(db, 'users', TCS.cloud.uid, 'grants'), { slot: 0, amount: 1e9, by: TCS.cloud.uid, at: F.serverTimestamp() }));
+      await t('grantAcorns', () => F.addDoc(F.collection(db, 'users', TCS.cloud.uid, 'grants'), { slot: 0, amount: 50, kind: 'acorns', by: TCS.cloud.uid, at: F.serverTimestamp() }));
+      await t('takeFromOther', () => F.addDoc(F.collection(db, 'users', uidZ, 'grants'), { slot: 0, amount: -1e9, kind: 'logs', by: TCS.cloud.uid, at: F.serverTimestamp() }));
       await t('claimName', () => F.setDoc(F.doc(db, 'usernames', 'someoneelse'), { uid: TCS.cloud.uid, username: 'someoneelse' }));
       await t('writeOther', () => F.setDoc(F.doc(db, 'users', uidZ, 'slots', '1'), { x: 1 }));
       await t('readOwn', () => F.getDoc(F.doc(db, 'users', TCS.cloud.uid, 'slots', '0')));
       return out;
     }, uidZ);
-    check('rules deny non-admin access', ['readOther', 'groupQuery', 'grant', 'claimName', 'writeOther'].every(k => denied[k] === 'permission-denied') && denied.readOwn === 'allowed', denied);
+    check('rules deny non-admin access', ['readOther', 'groupQuery', 'grant', 'grantAcorns', 'takeFromOther', 'claimName', 'writeOther'].every(k => denied[k] === 'permission-denied') && denied.readOwn === 'allowed', denied);
 
     // ---- stays logged in across reload; rename + delete hit the cloud
     await B.page.evaluate(() => TCS.menu.switchProfile());
@@ -239,9 +256,25 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     const bad3 = await P.page.evaluate(u => TCS.friends.challenge(u, 'acorns', 30), uidQ);
     const rulesFunds = await P.page.evaluate(async u => {
       const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app);
-      try { await F.addDoc(F.collection(db, 'duels'), { a: TCS.cloud.uid, b: u, aName: TCS.cloud.username, bName: 'x', kind: 'logs', amount: 9e5, status: 'pending', createdAt: F.serverTimestamp(), startAt: null, ta: null, tb: null, pa: 0, pb: 0, winner: '', endAt: null, paidA: false, paidB: false }); return 'allowed'; }
+      try { await F.addDoc(F.collection(db, 'duels'), { a: TCS.cloud.uid, b: u, aName: TCS.cloud.username, bName: 'x', kind: 'logs', amount: 9e5, status: 'pending', createdAt: F.serverTimestamp(), startAt: null, ta: null, tb: null, pa: 0, pb: 0, winner: '', endAt: null, paidA: false, paidB: false, aStage: 0, aCos: '||' }); return 'allowed'; }
       catch (e) { return e.code; }
     }, uidQ);
+    // the challenger's look (aStage int 0..7 + aCos string) is validated; a doc with neither is an old-style (v1, 100-chop) duel
+    const looks = await P.page.evaluate(async u => {
+      const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app), out = {};
+      const base = () => ({ a: TCS.cloud.uid, b: u, aName: TCS.cloud.username, bName: 'x', kind: 'logs', amount: 10, status: 'pending', createdAt: F.serverTimestamp(), startAt: null, ta: null, tb: null, pa: 0, pb: 0, winner: '', endAt: null, paidA: false, paidB: false });
+      const tryIt = async (k, extra) => { try { const r = await F.addDoc(F.collection(db, 'duels'), Object.assign(base(), extra)); out[k] = 'allowed'; await F.updateDoc(r, { status: 'cancelled' }).catch(() => {}); } catch (e) { out[k] = e.code; } };
+      await tryIt('legacy', {});
+      await tryIt('halfLook', { aStage: 2 });
+      await tryIt('badStage', { aStage: 9, aCos: '||' });
+      await tryIt('floatStage', { aStage: 1.5, aCos: '||' });
+      await tryIt('badCos', { aStage: 2, aCos: 7 });
+      await tryIt('longCos', { aStage: 2, aCos: 'x'.repeat(60) });
+      await tryIt('ok', { aStage: 2, aCos: 'crown|beard|' });
+      return out;
+    }, uidQ);
+    check('rules: invalid aStage/aCos rejected, old-style duel allowed', looks.legacy === 'allowed' && ['halfLook', 'badStage', 'floatStage', 'badCos', 'longCos'].every(k => looks[k] === 'permission-denied') && looks.ok === 'allowed', looks);
+    await P.page.waitForTimeout(800);
     check('insufficient funds rejected at send (+ rules)', !bad1.ok && /not enough/i.test(bad1.error) && !bad2.ok && /match/i.test(bad2.error) && !bad3.ok && rulesFunds === 'permission-denied', { bad1, bad2, bad3, rulesFunds });
     const small = await P.page.evaluate(u => TCS.friends.challenge(u, 'logs', 1000), uidQ);
     await Q.page.waitForFunction(id => TCS.friends.duels[id], small.id, { timeout: 10000 });
@@ -260,6 +293,11 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     await P.page.waitForFunction(id => !TCS.friends.duels[id] || TCS.friends.duels[id].status === 'declined', small.id, { timeout: 10000 }).catch(() => {});
     await setBal(Q, 5e5, 20);
 
+    // different looks: P = Redwood Valley, cowboy hat + goggles; Q = Crystal Caverns, crown + braid + rocket boots
+    const setLook = (X, st, eq) => X.page.evaluate(([st, eq]) => { const d = TCS.state.data; d.speciesIndex = d.species = st; d.equipped = eq; TCS.fx.applyEquipped(); TCS.state.save(); }, [st, eq]);
+    await setLook(P, 3, { hat: 'cowboy', face: 'goggles', boots: null }); await setLook(Q, 6, { hat: 'crown', face: 'braid', boots: 'rocketboots' });
+    const SHOTS = process.env.SHOTS, shot = async (X, n) => { if (SHOTS) await X.page.screenshot({ path: path.join(SHOTS, n + '.png') }); };
+
     // logs duel: Q mashes Space and wins 200k; P barely chops
     const W = 2e5;
     const dl = await P.page.evaluate(u => TCS.friends.challenge(u, 'logs', '200k'), uidQ);
@@ -269,29 +307,49 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     await P.page.waitForFunction(() => !!TCS.friends.live, null, { timeout: 10000 }).catch(() => {});
     await Q.page.waitForFunction(() => !!TCS.friends.live, null, { timeout: 10000 }).catch(() => {});
     check('both players enter the duel overlay', await P.page.$('#duel-ov') !== null && await Q.page.$('#duel-ov') !== null);
+    const vsTxt = X => X.page.evaluate(() => { const e = document.querySelector('#duel-ov.intro .dv-vs'); return e ? e.textContent.toLowerCase() : null; });
+    const vsP = await vsTxt(P), vsQ = await vsTxt(Q);
+    check('VS intro shows both names', [vsP, vsQ].every(t => t && t.indexOf(pn.toLowerCase()) >= 0 && t.indexOf(qn.toLowerCase()) >= 0 && /vs/.test(t)), [vsP, vsQ]);
+    await Q.page.waitForTimeout(700); await shot(Q, 'duel-desktop-1-vs');
+    const seen = X => X.page.evaluate(() => { const s = TCS.duel3d.sides; return s && { active: TCS.duel3d.active, me: [s.me.stage, s.me.cos], op: [s.op.stage, s.op.cos] }; });
+    const sp = await seen(P), sq = await seen(Q);
+    check('both clients see the opponent\'s stage + cosmetics', sp && sq && sp.active && sq.active
+      && sp.me[0] === 3 && sp.op[0] === 6 && sp.op[1].hat === 'crown' && sp.op[1].face === 'braid' && sp.op[1].boots === 'rocketboots'
+      && sq.me[0] === 6 && sq.op[0] === 3 && sq.op[1].hat === 'cowboy' && sq.op[1].face === 'goggles' && !sq.op[1].boots, { sp, sq });
     const preChop = await Q.page.evaluate(() => TCS.friends.chop());
-    await Q.page.waitForTimeout(3300);
-    // a cheating finish (100 chops right after GO) is rejected by the rules' click-rate cap
+    await Q.page.waitForTimeout(4300);
+    // a cheating finish (250 chops right after GO) is rejected by the rules' click-rate cap
     const cheat = await P.page.evaluate(async id => {
       const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app);
-      try { await F.updateDoc(F.doc(db, 'duels', id), { status: 'done', winner: TCS.cloud.uid, endAt: F.serverTimestamp(), pa: 100, ta: F.serverTimestamp() }); return 'allowed'; } catch (e) { return e.code; }
+      try { await F.updateDoc(F.doc(db, 'duels', id), { status: 'done', winner: TCS.cloud.uid, endAt: F.serverTimestamp(), pa: 250, ta: F.serverTimestamp() }); return 'allowed'; } catch (e) { return e.code; }
     }, dl.id);
     const burst = await Q.page.evaluate(() => { let n = 0; for (let i = 0; i < 60; i++) if (TCS.friends.chop()) n++; return n; });
     check('anti-cheat: no chops before GO, burst capped, rules reject a fake finish', !preChop && burst <= 20 && cheat === 'permission-denied', { preChop, burst, cheat });
     await Q.page.waitForTimeout(1000);
-    for (let i = 0; i < 400; i++) {
+    const t0 = Date.now(); let over = null;
+    for (let i = 0; i < 700; i++) {
       if (await Q.page.evaluate(() => !TCS.friends.live || TCS.friends.live.mine >= TCS.data.DUEL_HP)) break;
       await Q.page.keyboard.press('Space'); if (i % 8 === 0) await P.page.keyboard.press('Space');
-      await Q.page.waitForTimeout(60);
+      if (i === 120) await shot(Q, 'duel-desktop-2-mid');
+      // once the rate cap allows it (> 16.8 s after startAt), more than 250 chops is still rejected
+      if (over === null && Date.now() - t0 > 12500) over = await P.page.evaluate(async id => {
+        const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app);
+        try { await F.updateDoc(F.doc(db, 'duels', id), { pa: 251, ta: F.serverTimestamp() }); return 'allowed'; } catch (e) { return e.code; }
+      }, dl.id);
+      await Q.page.waitForTimeout(50);
     }
+    await Q.page.waitForTimeout(700); await shot(Q, 'duel-desktop-3-fall');
+    check('rules reject more than 250 chops', over === 'permission-denied', over);
     const oppSeen = await P.page.evaluate(() => TCS.friends.live ? TCS.friends.live.opp : -1);
     check('opponent progress shows live', oppSeen > 20, oppSeen);
     await P.page.waitForFunction(() => __res.length >= 1, null, { timeout: 20000 }).catch(() => {});
     await Q.page.waitForFunction(() => __res.length >= 1, null, { timeout: 20000 }).catch(() => {});
+    await Promise.all([P, Q].map(X => X.page.waitForSelector('.dv-result', { timeout: 4000 }).catch(() => {})));   // shown once the falling tree lands
     const rp = await P.page.evaluate(() => ({ res: __res, wood: TCS.state.data.wood, txt: (document.querySelector('.dv-result') || {}).textContent }));
     const rq = await Q.page.evaluate(() => ({ res: __res, wood: TCS.state.data.wood, txt: (document.querySelector('.dv-result') || {}).textContent }));
     check('exactly one winner (Q won, P lost)', rp.res.length === 1 && rq.res.length === 1 && rq.res[0].won && !rp.res[0].won, { p: rp.res, q: rq.res });
     check('balances after logs duel', Math.abs(rp.wood - (1e6 - W)) < 1 && Math.abs(rq.wood - (5e5 + W)) < 1, { p: rp.wood, q: rq.wood });
+    await shot(Q, 'duel-desktop-4-result');
     check('result line shown', /you won \+200K logs/i.test(rq.txt || '') && /you lost/i.test(rp.txt || ''), [rp.txt, rq.txt]);
     await Q.page.waitForTimeout(4500);
     check('result auto-closes', await Q.page.$('#duel-ov') === null);
@@ -306,6 +364,7 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     await Q.page.waitForFunction(() => window.TCS && TCS.ready && TCS.menu.screen === 'profiles', null, { timeout: 60000 }).catch(async e => { console.log('menu state', await Q.page.evaluate(() => JSON.stringify({ s: TCS.menu && TCS.menu.screen, u: TCS.cloud.username, uid: TCS.cloud.uid, fb: !!TCS.fb, loaded: TCS.state.loaded, keys: Object.keys(localStorage) }))); throw e; });
     await Q.page.evaluate(() => TCS.menu.startGame(TCS.cloud.username, 0)); await loaded(Q.page);
     await Q.page.waitForFunction(() => TCS.friends.active, null, { timeout: 10000 });
+    await Q.page.waitForFunction(() => TCS.state.loaded && TCS.state.data.wood > 0, null, { timeout: 15000 }).catch(() => {});
     await Q.page.waitForTimeout(2500);
     const wq2 = await Q.page.evaluate(() => { window.__res = []; TCS.bus.on('duelResult', e => __res.push(e)); return TCS.state.data.wood; });
     check('no double payout after reload', Math.abs(wq2 - (5e5 + W)) < 1, wq2);
@@ -313,13 +372,19 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     // acorn duel: P wins 5 acorns
     const da = await P.page.evaluate(u => TCS.friends.challenge(u, 'acorns', 5), uidQ);
     await Q.page.waitForFunction(id => TCS.friends.duels[id] && TCS.friends.duels[id].status === 'pending', da.id, { timeout: 10000 }).catch(() => {});
+    if (SHOTS) await P.page.setViewportSize({ width: 390, height: 844 });
     const accA = await Q.page.evaluate(id => TCS.friends.acceptDuel(id), da.id);
     await P.page.waitForFunction(() => !!TCS.friends.live, null, { timeout: 10000 }).catch(() => {});
-    await P.page.waitForTimeout(3300);
-    for (let i = 0; i < 400; i++) {
+    await P.page.waitForTimeout(700); await shot(P, 'duel-phone-1-vs');
+    await P.page.waitForTimeout(3600);
+    for (let i = 0; i < 700; i++) {
       if (await P.page.evaluate(() => !TCS.friends.live || TCS.friends.live.mine >= TCS.data.DUEL_HP)) break;
-      await P.page.keyboard.press('Space'); await P.page.waitForTimeout(60);
+      await P.page.keyboard.press('Space'); if (i % 6 === 0) await Q.page.keyboard.press('Space');
+      if (i === 120) await shot(P, 'duel-phone-2-mid');
+      await P.page.waitForTimeout(50);
     }
+    await P.page.waitForTimeout(700); await shot(P, 'duel-phone-3-fall');
+    await P.page.waitForTimeout(1200); await shot(P, 'duel-phone-4-result');
     await P.page.waitForFunction(() => __res.length >= 2, null, { timeout: 20000 }).catch(() => {});
     await Q.page.waitForFunction(() => __res.length >= 1, null, { timeout: 20000 }).catch(() => {});
     const ap = await P.page.evaluate(() => ({ a: TCS.state.data.acorns, r: __res[1] })), aq = await Q.page.evaluate(() => ({ a: TCS.state.data.acorns, r: __res[0] }));

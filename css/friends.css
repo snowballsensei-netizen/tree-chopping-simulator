@@ -34,31 +34,58 @@
 .dc-ic{display:inline-block;width:22px;height:22px;vertical-align:-5px}
 .dc-ic svg{width:100%;height:100%}
 
-#duel-ov{position:absolute;inset:0;z-index:60;background:rgba(14,22,10,.72);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
-  cursor:pointer;touch-action:none}
-.dv-wager{font-size:28px}
-.dv-wager .dc-ic{width:30px;height:30px;vertical-align:-6px}
-.dv-hp{position:relative;width:min(320px,80vw);height:26px;border:4px solid var(--ink);border-radius:14px;background:#fff;overflow:hidden}
+/* duel: the canvas behind is cleared dark and js/duel3d.js draws the two vignettes into the .dv-view rects; the rest of the UI hides */
+body.duel-on #ui-layer > :not(#duel-ov){visibility:hidden !important}
+#duel-ov{position:absolute;inset:0;z-index:60;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  cursor:pointer;touch-action:none;overflow:hidden;padding:12px 16px}
+.dv-wager{font-size:20px;opacity:.95}
+.dv-wager .dc-ic{width:22px;height:22px;vertical-align:-5px}
+.dv-arena{display:flex;flex-direction:row;gap:22px;align-items:flex-start;justify-content:center;width:100%}
+.dv-slot{display:flex;flex-direction:column;align-items:center;gap:5px;width:min(44vw,540px)}
+.dv-view{width:100%;aspect-ratio:4/3;max-height:calc(100vh - 170px);border:4px solid var(--ink);border-radius:18px;box-shadow:0 5px 0 var(--ink)}
+.dv-name{font-size:24px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1}
+.dv-hp{position:relative;width:min(100%,300px);height:24px;border:4px solid var(--ink);border-radius:14px;background:#fff;overflow:hidden}
 .dv-hp i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(#ff7a5a,#e8443a);transition:width .08s}
-.dv-hp span{position:absolute;inset:0;text-align:center;font-size:18px;line-height:18px}
-.dv-tree{width:min(220px,46vw);transform-origin:50% 95%}
-.dv-tree svg{width:100%;height:auto}
-.dv-tree.hit{animation:dvHit .14s ease-out}
-@keyframes dvHit{0%{transform:rotate(0)}40%{transform:rotate(-4deg) scale(.97,1.02)}100%{transform:rotate(0)}}
-.dv-bars{display:flex;flex-direction:column;gap:6px;width:min(320px,80vw)}
-.dv-bar{display:flex;align-items:center;gap:8px;font-size:18px}
-.dv-bar span{flex:0 0 90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dv-bar b{flex:1;height:16px;border:3px solid var(--ink);border-radius:9px;background:#fff;overflow:hidden;position:relative}
-.dv-bar b i{position:absolute;left:0;top:0;bottom:0;width:0;transition:width .15s}
-.dv-bar.me b i{background:#6fd043}.dv-bar.op b i{background:#5ec2ff}
-.dv-big{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);font-size:110px;--stroke:7px;pointer-events:none}
+.dv-slot.op .dv-hp i{background:linear-gradient(#7fd2ff,#3aa2e8)}
+.dv-hp span{position:absolute;inset:0;text-align:center;font-size:16px;line-height:16px}
+.dv-big{position:absolute;top:45%;left:50%;transform:translate(-50%,-50%);font-size:110px;--stroke:7px;pointer-events:none}
 .dv-big.pop{animation:dvPop .5s cubic-bezier(.2,1.6,.4,1)}
 @keyframes dvPop{0%{transform:translate(-50%,-50%) scale(.3);opacity:0}100%{transform:translate(-50%,-50%) scale(1);opacity:1}}
-.dv-result{font-size:54px;--stroke:6px;text-align:center;padding:0 16px;animation:dvPop2 .45s cubic-bezier(.2,1.6,.4,1)}
+.dv-result{position:absolute;top:45%;left:50%;transform:translate(-50%,-50%);font-size:54px;--stroke:6px;text-align:center;padding:8px 16px;width:100%;background:rgba(14,22,10,.55);
+  animation:dvPop .45s cubic-bezier(.2,1.6,.4,1);pointer-events:none}
 #duel-ov.won .dv-result{color:#ffe25a}
-@keyframes dvPop2{0%{transform:scale(.3);opacity:0}100%{transform:scale(1);opacity:1}}
 
+/* VS intro (DUEL_INTRO s, synced via --intro-age): names slide in, VS pops with a shake + flash, then all slide up as the vignettes appear */
+.dv-curtain,.dv-vs{display:none}
+#duel-ov.intro .dv-curtain{display:block;position:absolute;inset:0;background:#0e160a;pointer-events:none;animation:vsCurtain 1.5s linear var(--intro-age,0s) both}
+#duel-ov.intro .dv-vs{display:flex;position:absolute;left:0;right:0;top:42%;transform:translateY(-50%);align-items:center;justify-content:center;gap:28px;pointer-events:none;
+  animation:vsOut 1.5s ease-in var(--intro-age,0s) both}
+#duel-ov.intro .dv-arena,#duel-ov.intro .dv-wager{animation:vsArena 1.5s ease-out var(--intro-age,0s) both}
+.dv-vs span{font-size:46px;--stroke:5px;max-width:36vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vs-a{animation:vsInL 1.5s cubic-bezier(.2,1.3,.4,1) var(--intro-age,0s) both}
+.vs-b{animation:vsInR 1.5s cubic-bezier(.2,1.3,.4,1) var(--intro-age,0s) both}
+.vs-x{font-size:72px;--stroke:7px;color:#ffe25a;animation:vsPop 1.5s linear var(--intro-age,0s) both}
+@keyframes vsInL{0%{transform:translateX(-60vw);opacity:0}22%{transform:translateX(0);opacity:1}100%{transform:translateX(0)}}
+@keyframes vsInR{0%{transform:translateX(60vw);opacity:0}22%{transform:translateX(0);opacity:1}100%{transform:translateX(0)}}
+@keyframes vsPop{0%,18%{transform:scale(0);opacity:0}30%{transform:scale(1.35) rotate(-6deg);opacity:1;filter:brightness(2.2)}
+  36%{transform:scale(1) rotate(5deg);filter:none}42%{transform:rotate(-3deg)}48%{transform:rotate(2deg)}54%,100%{transform:rotate(0)}}
+@keyframes vsOut{0%,68%{transform:translateY(-50%);opacity:1}100%{transform:translateY(-160%);opacity:0}}
+@keyframes vsCurtain{0%,66%{opacity:1}100%{opacity:0}}
+@keyframes vsArena{0%,66%{opacity:0;transform:translateY(24px)}100%{opacity:1;transform:none}}
+
+/* portrait / narrow: stack the two vignettes (you on top) */
+@media (max-aspect-ratio:1/1){
+  .dv-arena{flex-direction:column;align-items:center;gap:8px}
+  .dv-slot{width:min(92vw,520px);gap:3px}
+  .dv-view{aspect-ratio:auto;height:calc((100vh - 190px) / 2);max-height:none}
+  .dv-name{font-size:20px}
+  .dv-hp{height:20px;border-width:3px}
+  .dv-hp span{font-size:14px;line-height:14px}
+  .dv-vs{flex-direction:column;gap:6px}
+  .dv-vs span{max-width:80vw}
+}
 @media (max-width:599px){
   #friends-panel{bottom:calc(var(--sheet) + var(--gap) * 2 + var(--ib) * 2 + 12px);width:min(240px,calc(100vw - 16px))}
   .dv-big{font-size:80px}.dv-result{font-size:36px}
+  .dv-vs span{font-size:36px}.vs-x{font-size:58px}
 }

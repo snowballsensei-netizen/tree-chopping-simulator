@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="css/ui.css">
 <link rel="stylesheet" href="css/menu.css">
 <link rel="stylesheet" href="css/friends.css">
+<link rel="stylesheet" href="css/patchnotes.css">
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
 </script>
@@ -23,7 +24,7 @@
 <script type="module">
 import * as THREE from 'three';
 window.THREE = THREE;
-const files = ['util','data','state','scene','world','upgrades3d','audio','fx','ui','accounts','cloud','friends','menu','main'];
+const files = ['util','data','state','scene','world','upgrades3d','audio','fx','ui','accounts','cloud','duel3d','friends','menu','main','patchnotes'];
 function load(i){
   if (i >= files.length) return;
   const s = document.createElement('script');

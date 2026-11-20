@@ -41,6 +41,7 @@
   const trunk = new THREE.Group(); tree.add(trunk);          // slides down when a log pops out
   const segments = [];
   let species = TCS.data.SPECIES[0];
+  const curSpecies = () => species;
   let barkTex = null;
 
   function makeBarkTexture(sp){
@@ -87,8 +88,10 @@
   const leafGeoRound = new THREE.IcosahedronGeometry(0.75, 1);
   const leafGeoCone = new THREE.ConeGeometry(0.85, 1.3, 7);
   const leafGeoCrystal = new THREE.OctahedronGeometry(0.7, 0);
+  wobbleGeos.concat([leafGeoRound, leafGeoCone, leafGeoCrystal]).forEach(g => { g.userData.shared = true; });
 
-  function buildDeco(seg){
+  function buildDeco(seg, sp){
+    const species = sp || curSpecies();
     if (seg.deco){ U.forgetOutlines(seg.deco); seg.group.remove(seg.deco); }
     const deco = new THREE.Group(); seg.deco = deco; seg.group.add(deco);
     const nArms = Math.random() < 0.75 ? (Math.random() < 0.45 ? 2 : 1) : 0;
@@ -265,7 +268,8 @@
     t.magFilter = THREE.NearestFilter; t.repeat.set(3, 2);
     return t;
   }
-  const lumber = (function(){
+  // makeLumberjack() -> a fresh toon lumberjack (the main one, or a copy for another THREE.Scene, e.g. the duel vignettes)
+  function makeLumberjack(){
     const root = new THREE.Group(); root.name = 'lumberjack';
     const body = new THREE.Group(); root.add(body);              // squash target
     const C = { skin: 0xffc9a0, jeans: 0x3866c9, boot: 0x5a3418, hair: 0x7a4320, beard: 0x8a4b22, axeHandle: 0xb07a43, axeHead: 0x9aa4ad };
@@ -383,22 +387,25 @@
     body.traverse(o => { if (o.isMesh) o.userData.clickTarget = 'lumberjack'; });
     return { root, body, head: headG, armPivot, axe, axeHead, blade, handle, slots, swing, update, attach, detach, setAxe, aim,
       get swinging(){ return swingT < 1; } };
-  })();
+  }
+  const lumber = makeLumberjack();
   world.add(lumber.root);
   lumber.root.position.set(-3.0, 0, 0.35); lumber.root.scale.setScalar(1.35);
   const NOTCH_TURN = 0.95, FACE_TURN = 0.4; // notch turned toward the camera; lumberjack turned so his face reads
-  function aimLumber(){
-    const np = new THREE.Vector3(tree.position.x + Math.sin(notch.rotation.y) * SEG_R, 0, tree.position.z + Math.cos(notch.rotation.y) * SEG_R);
-    const lp = lumber.root.position;
-    lumber.root.rotation.y = Math.atan2(np.x - lp.x, np.z - lp.z) - FACE_TURN;
-    lumber.root.updateMatrixWorld(true);
-    const loc = lumber.root.worldToLocal(np.setY(1.3));
-    lumber.aim(Math.atan2(loc.x, loc.z) + 0.12, -1.25);
+  function aimLumber(){ aimLumberAt(lumber, tree.position, notch.rotation.y); }
+  // face a lumberjack at the notch (angle notchY around a trunk at treePos) and aim his swing at it
+  function aimLumberAt(lj, treePos, notchY){
+    const np = new THREE.Vector3(treePos.x + Math.sin(notchY) * SEG_R, 0, treePos.z + Math.cos(notchY) * SEG_R);
+    const lp = lj.root.position;
+    lj.root.rotation.y = Math.atan2(np.x - lp.x, np.z - lp.z) - FACE_TURN;
+    lj.root.updateMatrixWorld(true);
+    const loc = lj.root.worldToLocal(np.setY(1.3));
+    lj.aim(Math.atan2(loc.x, loc.z) + 0.12, -1.25);
   }
 
   /* ---------- wood chips ---------- */
   const chips = [];
-  const chipGeo = new THREE.BoxGeometry(0.16, 0.09, 0.22);
+  const chipGeo = new THREE.BoxGeometry(0.16, 0.09, 0.22); chipGeo.userData.shared = true;
   const hudTarget = new THREE.Vector3();
   function hudWorldPoint(out){
     const el = document.getElementById('hud-wood-icon');
@@ -409,18 +416,22 @@
     const dir = out.sub(camera.position).normalize();
     return out.copy(camera.position).addScaledVector(dir, camera.position.distanceTo(cam.target) * 0.7);
   }
-  function spawnChips(origin, n, toHud){
-    const matA = U.toon(species.inner), matB = barkMat || U.toon(species.bark);
+  // opts (other scenes, e.g. the duel vignettes): {parent: Object3D, center: Vector3 (trunk axis), mats: [inner, bark]}
+  function spawnChips(origin, n, toHud, opts){
+    opts = opts || {};
+    const par = opts.parent || world, ctr = opts.center || tree.position;
+    const matA = opts.mats ? opts.mats[0] : U.toon(species.inner), matB = opts.mats ? opts.mats[1] : barkMat || U.toon(species.bark);
+    if (opts.parent) toHud = false;
     for (let i = 0; i < n; i++){
-      if (chips.length > 70){ const o = chips.shift(); world.remove(o.m); }
+      if (chips.length > 70){ const o = chips.shift(); o.par.remove(o.m); }
       const m = new THREE.Mesh(chipGeo, i % 2 ? matA : matB);
       U.outline(m, 0.18);
       m.position.copy(origin);
       m.rotation.set(Math.random() * 6, Math.random() * 6, 0);
-      const out = new THREE.Vector3(origin.x - tree.position.x, 0, origin.z - tree.position.z).normalize();
+      const out = new THREE.Vector3(origin.x - ctr.x, 0, origin.z - ctr.z).normalize();
       const v = out.multiplyScalar(U.rand(2, 4)).add(new THREE.Vector3(U.rand(-1.6, 1.6), U.rand(4, 7), U.rand(-1.6, 1.6)));
-      world.add(m);
-      chips.push({ m, v, t: 0, arc: U.rand(0.28, 0.42), toHud, from: null, spin: new THREE.Vector3(U.rand(-12, 12), U.rand(-12, 12), 0) });
+      par.add(m);
+      chips.push({ m, v, par, t: 0, arc: U.rand(0.28, 0.42), toHud, from: null, spin: new THREE.Vector3(U.rand(-12, 12), U.rand(-12, 12), 0) });
     }
   }
   function updateChips(dt){
@@ -431,7 +442,7 @@
         c.v.y -= 22 * dt; c.m.position.addScaledVector(c.v, dt);
         if (!c.toHud){
           if (c.m.position.y < 0.08){ c.m.position.y = 0.08; c.v.multiplyScalar(0.4); c.v.y = Math.abs(c.v.y) * 0.3; }
-          if (c.t > 1.4){ c.m.scale.setScalar(Math.max(0.001, 1 - (c.t - 1.4) * 4)); if (c.t > 1.65){ world.remove(c.m); chips.splice(i, 1); } }
+          if (c.t > 1.4){ c.m.scale.setScalar(Math.max(0.001, 1 - (c.t - 1.4) * 4)); if (c.t > 1.65){ c.par.remove(c.m); chips.splice(i, 1); } }
         }
       } else {
         if (!c.from){ c.from = c.m.position.clone(); c.mid = c.from.clone().add(new THREE.Vector3(0, 1.5, 0)); c.ft = 0; c.dur = U.rand(0.35, 0.5); }
@@ -443,7 +454,7 @@
                          a * a * c.from.z + 2 * a * k * c.mid.z + k * k * hudTarget.z);
         c.m.scale.setScalar(1 - k * 0.75);
         if (c.ft >= 1){
-          world.remove(c.m); chips.splice(i, 1);
+          c.par.remove(c.m); chips.splice(i, 1);
           bus.emit('chipLanded');
           const el = document.getElementById('hud-wood-icon');
           if (el){ el.classList.remove('bounce'); void el.offsetWidth; el.classList.add('bounce'); }
@@ -635,6 +646,31 @@
   bus.on('load', () => { setSpecies(TCS.state.species()); setNotch((TCS.state.data.stats.chops % TCS.data.CHOPS_PER_SEGMENT) / TCS.data.CHOPS_PER_SEGMENT); });
   bus.on('rebirth', e => setSpecies(e.species));
 
+  /* ---------- a small stand-alone trunk (duel vignettes): same bark, wobble segments, branches/leaves, root flare ---------- */
+  // makeTrunk(sp, segs=3) -> {group, mats:[inner, bark], impact(Vector3 out, notchY), dispose()}; trunk axis at the group origin
+  function makeTrunk(sp, segs){
+    sp = sp || TCS.data.SPECIES[0]; segs = segs || 3;
+    const group = new THREE.Group(), tex = makeBarkTexture(sp);
+    const bark = U.toon(0xffffff, { map: tex, emissive: sp.emissive || 0x000000, emissiveIntensity: 1 });
+    for (let i = 0; i < segs; i++){
+      const g = new THREE.Group(); g.position.y = SEG_H / 2 + i * SEG_H; group.add(g);
+      const mesh = new THREE.Mesh(wobbleGeos[i % wobbleGeos.length], bark); mesh.rotation.y = Math.random() * 6; U.outline(mesh, 0.045); g.add(mesh);
+      if (i >= 2) buildDeco({ group: g, deco: null }, sp);
+    }
+    const flare = new THREE.Mesh(new THREE.CylinderGeometry(SEG_R * 1.02, SEG_R * 1.35, 0.45, 20, 1, true), bark);
+    flare.position.y = 0.22; U.outline(flare, 0.04); group.add(flare);
+    for (let i = 0; i < 5; i++){
+      const a = i / 5 * Math.PI * 2 + 0.4;
+      const r = M.part('capsule', [0.22, 0.6], bark, { parent: group, outline: 0.09 });
+      r.position.set(Math.cos(a) * (SEG_R + 0.2), 0.12, Math.sin(a) * (SEG_R + 0.2));
+      r.rotation.set(0, -a, Math.PI / 2 - 0.35); r.rotation.order = 'YXZ';
+    }
+    const mats = [U.toon(sp.inner), bark];
+    return { group, mats, sp,
+      impact(out, notchY){ return out.set(group.position.x + Math.sin(notchY) * (SEG_R + 0.15), NOTCH_Y + 0.1, group.position.z + Math.cos(notchY) * (SEG_R + 0.15)); },
+      dispose(){ U.disposeTree(group); } };
+  }
+
   /* ---------- update loop hooks ---------- */
   const updaters = [];
   function onUpdate(fn){ updaters.push(fn); return () => { const i = updaters.indexOf(fn); if (i >= 0) updaters.splice(i, 1); }; }
@@ -662,7 +698,12 @@
     for (const fn of updaters){ try { fn(dt); } catch(e){ console.error('scene updater', e); } }
     updateCamera(dt);
   }
-  function render(){ renderer.render(scene, camera); }
+  // setRenderOverride(fn(renderer)|null): while set, fn draws the frame instead of the world (duel vignettes share this one renderer)
+  let renderOverride = null;
+  function render(){
+    if (renderOverride){ try { renderOverride(renderer); return; } catch(e){ console.error('render override', e); renderOverride = null; } }
+    renderer.render(scene, camera);
+  }
 
   // init species visuals
   setSpecies(species);
@@ -681,7 +722,8 @@
       get species(){ return species; }
     },
     lumberjack: lumber,
-    spawnChips: (pos, n, toHud) => spawnChips(pos, n, toHud),
+    makeLumberjack, makeTrunk, aimLumberAt, NOTCH_TURN, setRenderOverride(fn){ renderOverride = fn || null; },
+    spawnChips: (pos, n, toHud, opts) => spawnChips(pos, n, toHud, opts),
     floatText, worldToScreen, shake, chopFx,
     setMode, get mode(){ return cam.mode; }, cam,
     addClickable, pick

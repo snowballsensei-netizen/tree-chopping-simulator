@@ -3,11 +3,11 @@
      usernames/{lower} = {uid, username}            (create-only, uniqueness)
      users/{uid} = {username, usernameLower}
      users/{uid}/slots/{0|1|2} = {uid, username, usernameLower, slot, lastSaved, profileName, wood, lifetimeWood, rebirths, speciesIndex, playTime, data: <save JSON string>}
-     users/{uid}/grants/{id} = {slot, amount, by, at}  (written by the admin, consumed + deleted by the owner's client)
+     users/{uid}/grants/{id} = {slot, amount (+give / -take), kind logs|acorns, by, at}  (written by the admin, consumed + deleted by the owner's client)
    The game itself still plays from localStorage: each cloud slot is cached under 'tcs_csave_<uid>_<slot>' (see state.key),
    pulled before profile select / play (newer lastSaved wins) and pushed at most every 30 s plus on hide/unload/switch/logout/rebirth.
    API: active, online, uid, username, admin, ready, create(u,p), login(u,p), logout(), syncSlots(), pullSlot(s), flush(),
-        onDelete(s), onRename(s,d), adminTargets(q), grant(uid,slot,n) */
+        onDelete(s), onRename(s,d), adminTargets(q), grant(uid,slot,n,kind) */
 (function(){
   const TCS = window.TCS, bus = TCS.bus, store = TCS.store;
   const fb = TCS.fb || null;
@@ -253,12 +253,15 @@
       const seen = S.data.appliedGrants = Array.isArray(S.data.appliedGrants) ? S.data.appliedGrants : [];
       let got = 0;
       qs.forEach(g => {
-        const amt = num(g.data().amount);
-        if (seen.indexOf(g.id) < 0 && amt > 0){ S.addWood(amt); got += amt; seen.push(g.id); }
+        const amt = num(g.data().amount), kind = g.data().kind === 'acorns' ? 'acorns' : 'logs';
+        if (seen.indexOf(g.id) < 0 && amt){
+          if (kind === 'logs' && amt > 0) S.addWood(amt); else S.applyAdmin(S.data, kind, amt);
+          got++; seen.push(g.id);
+        }
         F.deleteDoc(g.ref).catch(() => {});
       });
       if (seen.length > 50) seen.splice(0, seen.length - 50);
-      if (got > 0){ bus.emit('adminGrant', { amount: got }); lastPush = 0; S.save(); }
+      if (got > 0){ bus.emit('adminGrant', { count: got }); lastPush = 0; S.save(); }
     }, err => console.warn('grants listener', err));
   }
 
@@ -280,10 +283,11 @@
     rows.sort((a, b) => (b.self - a.self) || a.username.localeCompare(b.username) || a.slot - b.slot);
     return rows;
   };
-  C.grant = async function(uid, slot, n){
+  // n > 0 gives, n < 0 takes; kind 'logs' | 'acorns'
+  C.grant = async function(uid, slot, n, kind){
     if (!db || !C.admin) return false;
     try {
-      await F.addDoc(F.collection(db, 'users', uid, 'grants'), { slot: +slot, amount: n, by: C.uid, at: F.serverTimestamp() });
+      await F.addDoc(F.collection(db, 'users', uid, 'grants'), { slot: +slot, amount: n, kind: kind === 'acorns' ? 'acorns' : 'logs', by: C.uid, at: F.serverTimestamp() });
       return true;
     } catch(e){ console.warn(e); return false; }
   };

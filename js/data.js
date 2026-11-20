@@ -218,8 +218,9 @@
     COFFEE_MULT: 2,
     CHOPS_PER_SEGMENT: 6,
     SEGMENT_METRES: 2,
-    // friend duels (cloud only). DUEL_HP / DUEL_MAX_CPS / DUEL_COUNTDOWN are mirrored in firestore.rules (duelCap)
-    DUEL_HP: 100, DUEL_MAX_CPS: 20, DUEL_COUNTDOWN: 3, DUEL_EXPIRE: 120, DUEL_FORFEIT: 15,
+    // friend duels (cloud only). DUEL_HP / DUEL_MAX_CPS / DUEL_COUNTDOWN / DUEL_EXPIRE / DUEL_FORFEIT are mirrored in firestore.rules.
+    // DUEL_COUNTDOWN = startAt -> GO in seconds: the DUEL_INTRO VS animation, then 3-2-1 (rules: GO = startAt + 4.5 s, forfeit after GO + 15 s)
+    DUEL_HP: 250, DUEL_MAX_CPS: 20, DUEL_COUNTDOWN: 4.5, DUEL_INTRO: 1.5, DUEL_EXPIRE: 120, DUEL_FORFEIT: 15,
     SAVE_VERSION: 2
   };
 })();

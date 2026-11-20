@@ -1,0 +1,17 @@
+/* "What's new" card (js/patchnotes.js) */
+#patch-notes{position:absolute;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;padding:16px;
+  background:rgba(14,22,10,.55);pointer-events:auto;animation:pnFade .25s ease-out}
+#patch-notes.out{animation:pnFadeOut .25s ease-in forwards}
+#patch-notes .pn-card{width:min(420px,100%);max-height:calc(100% - 32px);overflow:auto;padding:18px 22px 20px;display:flex;flex-direction:column;gap:12px;
+  animation:pnPop .4s cubic-bezier(.2,1.5,.4,1)}
+#patch-notes h2{margin:0;text-align:center;font-size:34px;font-weight:normal;--stroke:4px;color:#ffe25a}
+#patch-notes ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+#patch-notes li{display:flex;align-items:center;gap:12px;font-size:18px;line-height:1.15;color:var(--ink)}
+#patch-notes li i{font-style:normal;font-size:26px;flex:none;width:34px;text-align:center}
+#patch-notes li b{display:block;font-weight:normal;font-size:22px}
+#patch-notes .pn-ok{font-size:26px;padding:8px 16px;margin-top:4px}
+#patch-notes .pn-ok:focus-visible{outline:3px solid #ffd23f;outline-offset:2px}
+@keyframes pnFade{from{opacity:0}to{opacity:1}}
+@keyframes pnFadeOut{to{opacity:0}}
+@keyframes pnPop{from{transform:scale(.85) translateY(12px);opacity:0}to{transform:none;opacity:1}}
+@media (max-width:480px){ #patch-notes h2{font-size:28px} #patch-notes li{font-size:16px} #patch-notes li b{font-size:20px} }

@@ -61,13 +61,16 @@ service cloud.firestore {
         allow delete: if isOwner(uid);
       }
 
-      // wood grants from the admin: Shiv creates, the owner's client reads (adds the wood) and deletes
+      // admin grants: Shiv creates, the owner's client reads (gives/takes logs or acorns) and deletes.
+      // amount > 0 gives, < 0 takes; kind 'logs' (default when missing) or 'acorns' (whole numbers)
       match /grants/{gid} {
         allow read, delete: if isOwner(uid);
         allow create: if isShiv()
-          && request.resource.data.keys().hasOnly(['slot', 'amount', 'by', 'at'])
+          && request.resource.data.keys().hasOnly(['slot', 'amount', 'kind', 'by', 'at'])
           && request.resource.data.slot in [0, 1, 2]
-          && num(request.resource.data.amount) && request.resource.data.amount > 0
+          && num(request.resource.data.amount) && request.resource.data.amount != 0
+          && (!('kind' in request.resource.data) || request.resource.data.kind == 'logs'
+            || (request.resource.data.kind == 'acorns' && request.resource.data.amount is int))
           && request.resource.data.by == request.auth.uid
           && request.resource.data.at == request.time;
         allow update: if false;
@@ -121,7 +124,8 @@ service cloud.firestore {
     /* ---------- duels ---------- */
     // duels/{id}: a = challenger, b = challenged. status pending -> accepted -> done (or declined / cancelled).
     // pa/pb = chops (only that player writes it, with ta/tb = request.time), winner set once in a transaction,
-    // paidA/paidB = that player's client applied the payout. Keep 100 / 20 / 3 / 120 / 15 in sync with js/data.js DUEL_*.
+    // paidA/paidB = that player's client applied the payout. Keep 250 / 20 / 4.5 / 120 / 15 in sync with js/data.js DUEL_*.
+    // aStage/aCos (challenger, at create) and bStage/bCos (challenged, at accept) = stage 0..7 + equipped cosmetics 'hat|face|boots' (looks only).
     match /duels/{id} {
       function O() { return resource.data; }
       function N() { return request.resource.data; }
@@ -131,21 +135,26 @@ service cloud.firestore {
       function hasFunds(uid, kind, amount) {
         return get(/databases/$(database)/documents/presence/$(uid)).data[field(kind)] >= amount;
       }
-      // anti-cheat: at most 20 chops/s since GO (startAt + 3 s countdown), +5 slack
-      function cap() { return 20.0 * ((request.time.toMillis() - O().startAt.toMillis()) / 1000.0 - 3.0) + 5.0; }
+      // v2 duels carry aStage (3D duel: 250 chops, 4.5 s intro+countdown); older docs without it keep v1 (100 chops, 3 s)
+      function v2() { return 'aStage' in O(); }
+      function hp() { return v2() ? 250 : 100; }
+      function goSec() { return v2() ? 4.5 : 3.0; }
+      // anti-cheat: at most 20 chops/s since GO (startAt + goSec), +5 slack
+      function cap() { return 20.0 * ((request.time.toMillis() - O().startAt.toMillis()) / 1000.0 - goSec()) + 5.0; }
+      function okLook(s, c) { return s is int && s >= 0 && s < 8 && c is string && c.size() <= 48; }
       function okChops(p) {
-        return N()[p] is int && N()[p] >= O()[p] && N()[p] <= 100 && (N()[p] == O()[p] || N()[p] <= cap());
+        return N()[p] is int && N()[p] >= O()[p] && N()[p] <= hp() && (N()[p] == O()[p] || N()[p] <= cap());
       }
       function progress(side, p, t) {
         return request.auth.uid == O()[side] && O().status == 'accepted' && N().status == 'accepted'
           && changed().hasOnly([p, t]) && N()[t] == request.time && okChops(p);
       }
-      // first finisher (100 chops) or forfeit: the opponent sent nothing for 15 s after GO
+      // first finisher (250 chops) or forfeit: the opponent sent nothing for 15 s after GO (GO = startAt + 4.5 s)
       function finish(side, p, t, ot) {
         return request.auth.uid == O()[side] && O().status == 'accepted' && N().status == 'done'
           && changed().hasOnly(['status', 'winner', 'endAt', p, t])
           && N().winner == request.auth.uid && N().endAt == request.time && N()[t] == request.time && okChops(p)
-          && (N()[p] == 100 || (request.time > O()[ot] + duration.value(15, 's') && request.time > O().startAt + duration.value(18, 's')));
+          && (N()[p] == hp() || (request.time > O()[ot] + duration.value(15, 's') && request.time > O().startAt + duration.value(v2() ? 19500 : 18000, 'ms')));
       }
       function paid(side, f) {
         return request.auth.uid == O()[side] && O().status == 'done' && changed().hasOnly([f]) && N()[f] == true;
@@ -153,7 +162,8 @@ service cloud.firestore {
       function accept() {
         return request.auth.uid == O().b && O().status == 'pending' && N().status == 'accepted'
           && request.time < O().createdAt + duration.value(120, 's')
-          && changed().hasOnly(['status', 'startAt', 'ta', 'tb'])
+          && changed().hasOnly(['status', 'startAt', 'ta', 'tb', 'bStage', 'bCos'])
+          && (v2() ? okLook(N().bStage, N().bCos) : !('bStage' in N()))
           && N().startAt == request.time && N().ta == request.time && N().tb == request.time
           && hasFunds(O().a, O().kind, O().amount) && hasFunds(O().b, O().kind, O().amount);
       }
@@ -164,13 +174,14 @@ service cloud.firestore {
       function cancel() {
         return N().status == 'cancelled' && changed().hasOnly(['status'])
           && ((O().status == 'pending' && request.auth.uid == O().a)
-            || (O().status == 'accepted' && request.time < O().startAt + duration.value(3, 's')));
+            || (O().status == 'accepted' && request.time < O().startAt + duration.value(v2() ? 4500 : 3000, 'ms')));
       }
 
       allow read: if signedIn() && (resource.data.a == request.auth.uid || resource.data.b == request.auth.uid);
       allow create: if signedIn()
-        && N().keys().hasOnly(['a', 'b', 'aName', 'bName', 'kind', 'amount', 'status', 'createdAt', 'startAt', 'ta', 'tb', 'pa', 'pb', 'winner', 'endAt', 'paidA', 'paidB'])
+        && N().keys().hasOnly(['a', 'b', 'aName', 'bName', 'kind', 'amount', 'status', 'createdAt', 'startAt', 'ta', 'tb', 'pa', 'pb', 'winner', 'endAt', 'paidA', 'paidB', 'aStage', 'aCos'])
         && N().keys().hasAll(['a', 'b', 'aName', 'bName', 'kind', 'amount', 'status', 'createdAt', 'startAt', 'ta', 'tb', 'pa', 'pb', 'winner', 'endAt', 'paidA', 'paidB'])
+        && (('aStage' in N() || 'aCos' in N()) ? okLook(N().aStage, N().aCos) : true)
         && N().a == request.auth.uid && N().b is string && N().b != request.auth.uid
         && exists(/databases/$(database)/documents/friends/$(request.auth.uid)/list/$(N().b))
         && N().aName is string && ownsName(N().aName.lower()) && N().bName is string && N().bName.size() <= 16

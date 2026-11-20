@@ -432,8 +432,9 @@
       '<div class="admin-box" hidden><div class="sec-title outlined">ADMIN</div>' +
         '<input class="adm-search" type="text" placeholder="SEARCH USERNAME" hidden>' +
         '<select class="adm-target"></select>' +
-        '<input class="adm-amt" type="text" inputmode="decimal" placeholder="AMOUNT (E.G. 5000 OR 2.5M)">' +
-        '<div class="set-btns"><button class="btn b-give">GIVE LOGS</button></div>' +
+        '<div class="adm-row"><input class="adm-amt" type="text" inputmode="decimal" placeholder="AMOUNT (E.G. 5000 OR 2.5M)">' +
+          '<div class="adm-kind"><button data-v="logs" class="on">LOGS</button><button data-v="acorns">ACORNS</button></div></div>' +
+        '<div class="set-btns"><button class="btn b-give">GIVE</button><button class="btn red b-take">TAKE</button></div>' +
         '<div class="adm-msg outlined outlined-sm"></div></div>' +
       '<div class="set-btns"><button class="btn b-switch">SWITCH PROFILE</button><button class="btn red b-logout">LOG OUT</button></div>';
     st.ranges = p.querySelectorAll('input[type=range]');
@@ -456,17 +457,28 @@
     st.admSearch.hidden = !(TCS.cloud && TCS.cloud.active);
     st.admSearch.addEventListener('change', fillAdminTargets);
     st.admSearch.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') st.admSearch.blur(); });
-    p.querySelector('.b-give').addEventListener('click', () => {
+    st.admKind = 'logs';
+    const kindSeg = p.querySelector('.adm-kind');
+    kindSeg.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      st.admKind = b.dataset.v; kindSeg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    });
+    const adminDo = sign => {
       const s = S(); if (!s.isAdmin()) return;
-      const n = parseAmount(st.admAmt.value);
+      let n = parseAmount(st.admAmt.value);
+      const kind = st.admKind, unit = kind === 'acorns' ? 'ACORNS' : 'LOGS';
+      if (kind === 'acorns') n = Math.round(n);
       const [u, slot] = (st.admTarget.value || '').split('|');
+      if (!u){ st.admMsg.textContent = 'PICK A PLAYER'; return; }
       if (!(n > 0)){ st.admMsg.textContent = 'ENTER AN AMOUNT'; return; }
       st.admMsg.textContent = '...';
-      Promise.resolve(s.adminGiveWood(u, +slot, n)).then(ok => {
-        st.admMsg.textContent = ok ? 'GAVE ' + U.fmt(n) + ' LOGS' : 'FAILED';
+      Promise.resolve(s.adminAdjust(u, +slot, kind, sign * n)).then(ok => {
+        st.admMsg.textContent = ok ? (sign > 0 ? 'GAVE ' : 'TOOK ') + U.fmt(n) + ' ' + unit : 'FAILED';
         if (ok) fillAdminTargets();
       });
-    });
+    };
+    p.querySelector('.b-give').addEventListener('click', () => adminDo(1));
+    p.querySelector('.b-take').addEventListener('click', () => adminDo(-1));
     p.querySelector('.b-switch').addEventListener('click', () => {
       try { TCS.menu.switchProfile(); } catch(e){ console.error(e); }
     });

@@ -399,19 +399,37 @@
       return out;
     },
     // give n logs to a profile (the live one directly, others by editing their stored save)
-    adminGiveWood(username, slot, n){
-      if (!S.isAdmin() || !(n > 0) || !isFinite(n)) return false;
-      if (TCS.cloud && TCS.cloud.active){
-        // username is the target's uid here; the live profile gets it directly, others via a grant doc
-        if (S.profile && username === TCS.cloud.uid && S.profile.slot === slot){ S.addWood(n); S.save(); return true; }
-        return TCS.cloud.grant(username, slot, n);
+    adminGiveWood(username, slot, n){ return S.adminAdjust(username, slot, 'logs', n); },
+    // apply an admin change to save data d: kind 'logs' | 'acorns', delta > 0 gives, < 0 takes (never below 0)
+    applyAdmin(d, kind, delta){
+      if (kind === 'acorns'){
+        delta = Math.round(delta);
+        if (delta < 0) delta = -Math.min(-delta, d.acorns || 0);
+        d.acorns = (d.acorns || 0) + delta; d.acornsEarned = Math.max(0, (d.acornsEarned || 0) + delta);
+      } else if (delta > 0){
+        d.wood = (d.wood || 0) + delta; d.runWood = (d.runWood || 0) + delta; d.lifetimeWood = (d.lifetimeWood || 0) + delta;
+      } else {
+        delta = -Math.min(-delta, d.wood || 0); d.wood = (d.wood || 0) + delta;
       }
-      if (S.profile && S.profile.username.toLowerCase() === String(username).toLowerCase() && S.profile.slot === slot){
-        S.addWood(n); S.save(); return true;
+      return delta;
+    },
+    // admin: give (n > 0) or take (n < 0) logs or acorns from a profile
+    adminAdjust(username, slot, kind, n){
+      if (!S.isAdmin() || !n || !isFinite(n)) return false;
+      kind = kind === 'acorns' ? 'acorns' : 'logs';
+      if (kind === 'acorns'){ n = Math.round(n); if (!n) return false; }
+      const live = TCS.cloud && TCS.cloud.active
+        ? (S.profile && username === TCS.cloud.uid && S.profile.slot === slot)
+        : (S.profile && S.profile.username.toLowerCase() === String(username).toLowerCase() && S.profile.slot === slot);
+      if (live){
+        if (kind === 'logs' && n > 0) S.addWood(n); else S.applyAdmin(S.data, kind, n);
+        S.save(); bus.emit('adminGrant', { amount: n, kind }); return true;
       }
+      // cloud: username is the target's uid; other players get it through a grant doc their client applies
+      if (TCS.cloud && TCS.cloud.active) return TCS.cloud.grant(username, slot, n, kind);
       const k = S.key(username, slot), d = store.getJSON(k, null);
       if (!d) return false;
-      d.wood = (d.wood || 0) + n; d.runWood = (d.runWood || 0) + n; d.lifetimeWood = (d.lifetimeWood || 0) + n;
+      S.applyAdmin(d, kind, n);
       return store.setJSON(k, d);
     },
     // adds the held idle earnings to the wood counter; returns the amount

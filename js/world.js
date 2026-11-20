@@ -34,8 +34,8 @@
   /* ---------- geometry ---------- */
   const extra = new Map();
   function geo(type, size){
-    if (type === 'oct'){ const k = 'oct' + size[0]; if (!extra.has(k)) extra.set(k, new THREE.OctahedronGeometry(size[0], 0)); return extra.get(k); }
-    if (type === 'disc'){ const k = 'disc' + size.join(); if (!extra.has(k)) extra.set(k, new THREE.CylinderGeometry(size[0], size[0], 0.04, size[1] || 40)); return extra.get(k); }
+    if (type === 'oct'){ const k = 'oct' + size[0]; if (!extra.has(k)) extra.set(k, new THREE.OctahedronGeometry(size[0], 0)); extra.get(k).userData.shared = true; return extra.get(k); }
+    if (type === 'disc'){ const k = 'disc' + size.join(); if (!extra.has(k)) extra.set(k, new THREE.CylinderGeometry(size[0], size[0], 0.04, size[1] || 40)); extra.get(k).userData.shared = true; return extra.get(k); }
     return M.geo(type, size);
   }
 
@@ -320,6 +320,27 @@
     return st;
   }
 
+  /* ---------- duel vignette: a small, light copy of a stage (ground checker disc, a few accent props, lights) ---------- */
+  // vignette(i) -> {root (Group: ground + props + lights), env, sky (hex), dispose()}; the tree sits at the origin, the lumberjack at (-3, 0, 0.35)
+  const VIG_SPOTS = [[-5.4, -1.6], [-4.8, 2.4], [-1.6, 2.6], [1.9, 2.3], [3.6, 0.6], [2.6, -2.4], [-1.2, -2.6], [5.2, -1.2]];
+  function vignette(i){
+    i = ((Math.floor(i) % 8) + 8) % 8;
+    const env = STAGES[i].env, root = new THREE.Group();
+    seed = 5000 + i * 131;
+    const b = Builder();
+    VIG_SPOTS.forEach(([x, z], k) => { b.prop(x + R(-0.3, 0.3), z + R(-0.3, 0.3), R(0, PI * 2), R(1.3, 1.6), 0); pickOf(ACCENTS[i])(b); });
+    root.add(bake(b, { value: 99 }));
+    const c = document.createElement('canvas'); c.width = c.height = 2;
+    const x = c.getContext('2d'); x.fillStyle = env.ground[0]; x.fillRect(0, 0, 2, 2); x.fillStyle = env.ground[1]; x.fillRect(0, 0, 1, 1); x.fillRect(1, 1, 1, 1);
+    const tex = new THREE.CanvasTexture(c); tex.magFilter = tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace; tex.repeat.set(10, 10);
+    const g = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshBasicMaterial({ map: tex }));
+    g.rotation.x = -PI / 2; g.position.set(1, 0, 1); root.add(g);
+    root.add(new THREE.HemisphereLight(env.hemi[0], env.hemi[1], env.hemi[2]));
+    const sun = new THREE.DirectionalLight(env.sun[0], env.sun[1]); sun.position.set(-6, 12, 8); root.add(sun);
+    return { root, env, sky: env.sky, dispose(){ U.disposeTree(root); } };
+  }
+
   /* ---------- environment (ground / sky / lights) ---------- */
   let ground = null;
   function applyEnv(env){
@@ -519,7 +540,7 @@
   swapNow(0);
 
   TCS.world = {
-    setStage, get stage(){ return stage; }, STAGES, NAMES, stageName, clear,
+    setStage, get stage(){ return stage; }, STAGES, NAMES, stageName, clear, vignette,
     get life(){ return life; },
     drawCalls(){ return current ? current.root.children.length : 0; }
   };
