@@ -63,6 +63,7 @@
       if (u.length < 4) return 'At least 4 characters';
       if (u.length > 16) return 'At most 16 characters';
       if (!/^[A-Za-z0-9_]+$/.test(u)) return 'Letters, numbers and _ only';
+      if (TCS.leaderboard && TCS.leaderboard.isBot && TCS.leaderboard.isBot(u)) return 'Username taken';   // leaderboard players' names
       if (!(TCS.cloud && TCS.cloud.active) && A.find(u)) return 'Username taken'; // cloud: checked on create (local-only names may migrate)
       return null;
     },

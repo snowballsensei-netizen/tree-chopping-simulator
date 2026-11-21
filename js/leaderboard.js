@@ -151,6 +151,10 @@
   const nowTick = () => Math.floor(Date.now() / TICK_MS);
 
   const LB = TCS.leaderboard = { STATS, TICK_MS, TOP, bots: BOTS, at, tick: nowTick, _botStats: botStats, _hoursAt: hoursAt, _rebirthsOf: rebirthsOf, _log10LogsAt: log10LogsAt, EPOCH };
+  // every bot name (lower-case), so nobody can sign up as one and friend requests to them look normal
+  const BOT_NAMES = {}; BOTS.forEach(b => { BOT_NAMES[b.name.toLowerCase()] = b.name; });
+  LB.isBot = name => Object.prototype.hasOwnProperty.call(BOT_NAMES, String(name || '').trim().toLowerCase());
+  LB.botName = name => BOT_NAMES[String(name || '').trim().toLowerCase()] || null;
   if (typeof document === 'undefined' || !bus) return;   // node (tuning / tests): model only
 
   /* ---------- real players (cloud) ---------- */

@@ -106,13 +106,27 @@
   }
 
   /* ---------- friends ---------- */
+  // leaderboard players (bots) aren't real accounts: a request to one looks sent (and stays pending forever)
+  function botRequest(lower){
+    const LB = TCS.leaderboard;
+    if (!LB || !LB.isBot || !LB.isBot(lower)) return err('No such player');
+    const key = 'tcs_botreq_' + me, sent = TCS.store.getJSON(key, []);
+    const list = Array.isArray(sent) ? sent : [];
+    if (list.indexOf(lower) >= 0) return err('Already sent');
+    list.push(lower); TCS.store.setJSON(key, list.slice(-200));
+    return { ok: true, sent: true };
+  }
   FR.request = async function(name){
     if (!FR.active) return err('Offline');
     const lower = String(name || '').trim().toLowerCase();
     if (!/^[a-z0-9_]{3,16}$/.test(lower)) return err('Enter a username');
     if (lower === String(C.username).toLowerCase()) return err("That's you!");
     let to;
-    try { const s = await F.getDoc(F.doc(db, 'usernames', lower)); if (!s.exists()) return err('No such player'); to = s.data().uid; }
+    try {
+      const s = await F.getDoc(F.doc(db, 'usernames', lower));
+      if (!s.exists()) return botRequest(lower);
+      to = s.data().uid;
+    }
     catch(e){ return err('Offline'); }
     if (FR.friends[to]) return err('Already friends');
     if (FR.incoming[to]) return FR.accept(to);
