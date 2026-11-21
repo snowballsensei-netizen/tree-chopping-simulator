@@ -191,6 +191,15 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     });
     check('leaderboard doc written with the player values', lbW.ok && lbW.d.username === lbW.me && lbW.d.logs > 0 && lbW.d.logs <= lbW.lt && lbW.d.logs >= lbW.lt * 0.9
       && lbW.d.rebirths === lbW.r && lbW.d.acorns === lbW.ae && lbW.d.wins === 0, lbW);
+    // admin backfill: B's entry is stale (tiny), Shiv's client raises it from B's cloud save; a normal player can't do that
+    await B.page.evaluate(async () => { const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app); TCS.state.save(); await TCS.cloud.flush();
+      await F.setDoc(F.doc(db, 'leaderboard', TCS.cloud.uid), { username: TCS.cloud.username, wins: 0, logs: 1, rebirths: 0, acorns: 0, at: F.serverTimestamp() }); });
+    const filled = await Z.page.evaluate(async () => TCS.leaderboard.adminBackfill(true));
+    const afterFill = await B.page.evaluate(async () => { const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app); return (await F.getDoc(F.doc(db, 'leaderboard', TCS.cloud.uid))).data(); });
+    check('admin backfill raises a stale entry from the save', filled >= 1 && afterFill.logs >= lbW.lt * 0.9 && afterFill.username === lbW.me, { filled, logs: afterFill.logs, lt: lbW.lt });
+    const notAdmin = await B.page.evaluate(async uidZ => { const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app);
+      try { await F.setDoc(F.doc(db, 'leaderboard', uidZ), { username: 'Shiv', wins: 0, logs: 5, rebirths: 0, acorns: 0, at: F.serverTimestamp() }); return 'allowed'; } catch (e) { return e.code; } }, await Z.page.evaluate(() => TCS.cloud.uid));
+    check('non-admin cannot write someone else\'s entry', notAdmin === 'permission-denied', notAdmin);
     const lbRules = await B.page.evaluate(async uidZ => {
       const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app), out = {}, me = TCS.cloud.uid, u = TCS.cloud.username;
       const doc = o => Object.assign({ username: u, wins: 0, logs: 1, rebirths: 0, acorns: 0, at: F.serverTimestamp() }, o);

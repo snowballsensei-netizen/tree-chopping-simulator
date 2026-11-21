@@ -3,8 +3,9 @@
    API: TCS.patchnotes.show() (force open), .VERSION */
 (function(){
   const TCS = window.TCS, KEY = 'tcs_patch_seen';
-  const VERSION = '2026-11-20c';
+  const VERSION = '2026-11-21';
   const NOTES = [
+    ['🎁', 'Daily rewards', 'Log in every day for a bigger reward — day 7 is huge'],
     ['🥇', 'Leaderboards', 'See the top 50 lumberjacks on the title screen'],
     ['🏆', 'Duel finale', 'Ready, Set, GO!, battle music while you duel, and a victory celebration for the winner'],
     ['👥', 'Friends', 'Tap the friends button (or press F) to add friends by username'],

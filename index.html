@@ -12,6 +12,12 @@
 <link rel="stylesheet" href="css/friends.css">
 <link rel="stylesheet" href="css/patchnotes.css">
 <link rel="stylesheet" href="css/leaderboard.css">
+<link rel="stylesheet" href="css/daily.css">
+<script>
+// cache-busting: game files get ?v=<hour>, so every device picks up a new release within the hour
+window.TCS_V = Math.floor(Date.now() / 3600000);
+document.querySelectorAll('link[rel=stylesheet][href^="css/"]').forEach(l => { l.href = l.getAttribute('href') + '?v=' + window.TCS_V; });
+</script>
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
 </script>
@@ -21,15 +27,15 @@
   <canvas id="c"></canvas>
   <div id="ui-layer"></div>
 </div>
-<script src="js/firebase-config.js"></script>
+<script>document.write('<script src="js/firebase-config.js?v=' + window.TCS_V + '"><\/script>');</script>
 <script type="module">
 import * as THREE from 'three';
 window.THREE = THREE;
-const files = ['util','data','state','scene','world','upgrades3d','audio','fx','ui','accounts','cloud','duel3d','friends','menu','leaderboard','main','patchnotes'];
+const files = ['util','data','state','scene','world','upgrades3d','audio','fx','ui','accounts','cloud','duel3d','friends','daily','menu','leaderboard','main','patchnotes'];
 function load(i){
   if (i >= files.length) return;
   const s = document.createElement('script');
-  s.src = 'js/' + files[i] + '.js';
+  s.src = 'js/' + files[i] + '.js?v=' + window.TCS_V;
   s.onload = () => load(i + 1);
   s.onerror = () => { console.error('Failed to load js/' + files[i] + '.js'); load(i + 1); };
   document.body.appendChild(s);

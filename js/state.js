@@ -22,6 +22,7 @@
       wood: 0, runWood: 0, lifetimeWood: 0,
       owned, tech: {},
       acorns: 0, acornsEarned: 0, perks: {},
+      daily: { last: '', streak: 0, total: 0 },   // daily login reward (daily.js): last claimed local date, streak, total claims
       duelWins: 0,                   // duels won (friends.js payout, once per duel; leaderboard)
       speciesIndex: 0, species: 0,   // species = stage index (alias kept in sync with speciesIndex)
       achievements: {}, cosmetics: {}, equipped: { hat: null, face: null, boots: null }, autoselect: true,

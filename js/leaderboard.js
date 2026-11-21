@@ -67,9 +67,24 @@
     return out;
   }
 
-  /* ---------- bot model ---------- */
-  // played hours -> rebirths: later stages take longer (T(R) = 0.4 R + 0.012 R^2 hours)
-  const rebirthsOf = T => (-0.4 + Math.sqrt(0.16 + 0.048 * T)) / 0.024;
+  /* ---------- bot model ----------
+     Calibrated on tests/sim.js (greedy player, 4 clicks/s, STAGE_TAPER 1.6), per completed rebirth R:
+     SIM_H[R] = hours played, SIM_LG[R] = log10(lifetime logs). Past R=29 the sim's stages take 6 h+ each,
+     so the table is extended with stages growing 1.25x longer and logs x2.4 per rebirth. Acorns earned
+     follow the sim too (~2.9 R^2 + 3 R). */
+  const SIM_H  = [0, 0.7, 1.2, 2.1, 3.0, 3.6, 4.0, 4.6, 5.2, 5.6, 6.0, 6.5, 7.2, 7.7, 8.4, 9.3, 10.5, 11.3, 12.4, 14.0,
+                  15.1, 16.7, 19.0, 22.4, 27.2, 30.8, 43.9, 55.3, 72.3, 90];
+  const SIM_LG = [6, 12.91, 13.39, 13.96, 14.39, 14.86, 15.29, 15.71, 16.13, 16.21, 16.37, 16.58, 16.87, 17.22, 17.60, 18.00,
+                  18.41, 18.81, 19.20, 19.56, 19.93, 20.33, 20.74, 21.15, 21.56, 21.97, 22.37, 22.72, 23.09, 23.49, 23.90];
+  (function extend(){ let stage = 18; for (let R = SIM_H.length; R <= 80; R++){ stage *= 1.25; SIM_H.push(SIM_H[R - 1] + stage); } for (let R = SIM_LG.length; R <= 81; R++) SIM_LG.push(SIM_LG[R - 1] + 0.38); })();
+  // effective hours -> rebirths (fractional: progress through the current stage)
+  function rebirthsOf(T){
+    if (T <= 0) return 0;
+    for (let R = 1; R < SIM_H.length; R++) if (T < SIM_H[R]) return R - 1 + (T - SIM_H[R - 1]) / (SIM_H[R] - SIM_H[R - 1]);
+    return SIM_H.length - 1;
+  }
+  // lifetime logs after Rf rebirths: log-interpolated between table points (logs climb steadily through a stage)
+  function log10LogsAt(Rf){ const R = Math.min(Math.floor(Rf), SIM_LG.length - 2), k = Rf - R; return SIM_LG[R] + (SIM_LG[R + 1] - SIM_LG[R]) * k; }
   function makeBots(){
     return makeNames().map((name, i) => {
       const r = mulberry(hash(i, 7) || 1);
@@ -80,7 +95,7 @@
         hpd: 0.15 + 1.7 * Math.pow(lo, 2.4),                 // hours a day at the start (few grinders, many casuals)
         life: 8 + 45 * r3,                                // days until the habit fades (e-folding)
         floor: 0.02 + 0.08 * r6,                            // fraction of play that never fades
-        skill: 0.75 + 0.6 * r4,                             // rebirth speed
+        skill: 0.35 + 0.6 * r4,                             // efficiency vs the sim's optimal player (0.35..0.95)
         logK: Math.pow(10, (r5 - 0.5) * 0.8),               // logs factor (x0.4 .. x2.5)
         acK: 0.85 + 0.3 * r(),                              // acorns (Seed Bank etc.)
         duel: 0.6 + 16 * Math.pow(r(), 2.6)               // duel wins per played hour (few duel addicts)
@@ -105,9 +120,9 @@
     const Rf = rebirthsOf(H * b.skill), R = Math.floor(Rf);
     return {
       wins: Math.floor(H * b.duel),
-      logs: Math.floor(b.logK * Math.pow(10, 7.5 + 0.13 * Rf + 1.6 * Math.min(1, Rf / 3)) * (1 + 0.15 * Math.sqrt(H))),
+      logs: Math.floor(b.logK * Math.pow(10, log10LogsAt(Rf))),
       rebirths: R,
-      acorns: Math.floor((8 * R + 2 * R * (R - 1)) * b.acK)
+      acorns: Math.floor((2.9 * R * R + 3 * R) * b.acK)
     };
   }
   function at(tick){
@@ -121,7 +136,7 @@
   }
   const nowTick = () => Math.floor(Date.now() / TICK_MS);
 
-  const LB = TCS.leaderboard = { STATS, TICK_MS, TOP, bots: BOTS, at, tick: nowTick, _botStats: botStats, _hoursAt: hoursAt, EPOCH };
+  const LB = TCS.leaderboard = { STATS, TICK_MS, TOP, bots: BOTS, at, tick: nowTick, _botStats: botStats, _hoursAt: hoursAt, _rebirthsOf: rebirthsOf, _log10LogsAt: log10LogsAt, EPOCH };
   if (typeof document === 'undefined' || !bus) return;   // node (tuning / tests): model only
 
   /* ---------- real players (cloud) ---------- */
@@ -140,22 +155,71 @@
     if (S.loaded && S.profile && S.profile.username === cl.username) add(statsOf(S.data));
     return best;
   }
-  let lastPush = 0, lastSent = null, pushing = null;
+  // rules caps: whole numbers, rebirths <= 1000, acorns <= 1e8, wins <= 1e6
+  function clampStats(s){
+    return { wins: Math.min(1e6, Math.floor(s.wins)), logs: s.logs, rebirths: Math.min(1000, Math.floor(s.rebirths)), acorns: Math.min(1e8, Math.floor(s.acorns)) };
+  }
+  let lastPush = 0, lastSent = null, pushing = null, retry = null;
   LB.push = function(force){
     const cl = C(), d = db(); if (!cl || !cl.uid || !cl.username || !d) return Promise.resolve(false);
-    const s = myStats(); if (!s) return Promise.resolve(false);
+    let s = myStats(); if (!s) return Promise.resolve(false);
+    s = clampStats(s);
     const key = JSON.stringify(s) + cl.uid;
     if (!force && key === lastSent) return Promise.resolve(true);
     lastPush = Date.now();
     const F = fb().F;
     pushing = F.setDoc(F.doc(d, 'leaderboard', cl.uid), Object.assign({ username: cl.username }, s, { at: F.serverTimestamp() }))
-      .then(() => { lastSent = key; return true; }, e => { console.warn('leaderboard write', e && e.code); return false; });
+      .then(() => { lastSent = key; clearTimeout(retry); retry = null; return true; }, e => {
+        console.warn('leaderboard write', e && e.code);
+        if (!retry) retry = setTimeout(() => { retry = null; LB.push(true); }, 20000);   // e.g. offline: try again
+        return false;
+      });
     return pushing;
   };
   bus.on('save', () => { if (Date.now() - lastPush >= 60000) LB.push(); });
   bus.on('load', () => setTimeout(() => LB.push(), 0));
+  // logging in (even without opening a save) uploads the stats of the cached slots, so the board knows you
+  bus.on('cloudUser', () => setTimeout(() => LB.push(), 1500));
+  bus.on('menuOpen', () => setTimeout(() => LB.push(), 500));
   bus.on('duelResult', e => { if (e && e.won) setTimeout(() => LB.push(true), 0); });
   bus.on('logout', () => { lastSent = null; });
+
+  /* admin backfill: Shiv can read every save, so while Shiv is on the menu, entries are created / raised for
+     players whose game hasn't uploaded yet (e.g. they haven't played since leaderboards came out). Never lowers. */
+  let lastFill = 0;
+  async function adminBackfill(){
+    const cl = C(), d = db(); if (!cl || !cl.admin || !d || Date.now() - lastFill < 10 * 60000) return 0;
+    lastFill = Date.now();
+    const F = fb().F, best = {};
+    try {
+      (await F.getDocs(F.query(F.collectionGroup(d, 'slots'), F.limit(500)))).forEach(doc => {
+        const v = doc.data(); if (!v || !v.uid || !v.username) return;
+        let data = null; try { data = JSON.parse(v.data); } catch(e){}
+        const s = statsOf(data) || { wins: 0, logs: n0(v.lifetimeWood), rebirths: Math.floor(n0(v.rebirths)), acorns: 0 };
+        s.logs = Math.max(s.logs, n0(v.lifetimeWood));
+        const b = best[v.uid] || (best[v.uid] = { username: v.username, wins: 0, logs: 0, rebirths: 0, acorns: 0 });
+        STATS.forEach(k => { if (s[k] > b[k]) b[k] = s[k]; });
+      });
+      const have = {};
+      (await F.getDocs(F.query(F.collection(d, 'leaderboard'), F.limit(1000)))).forEach(doc => { have[doc.id] = doc.data(); });
+      let n = 0;
+      for (const uid of Object.keys(best)){
+        if (uid === cl.uid) continue;                 // own entry comes from push()
+        const b = clampStats(best[uid]), h = have[uid] || {};
+        const next = {}; let raise = !have[uid];
+        STATS.forEach(k => { const cur = typeof h[k] === 'number' ? h[k] : 0; next[k] = Math.max(cur, b[k]); if (next[k] > cur) raise = true; });
+        if (!raise || !(next.logs > 0 || next.rebirths > 0)) continue;
+        if (have[uid]) next.wins = Math.min(next.wins, (h.wins || 0) + 20);   // rules cap per write
+        try { await F.setDoc(F.doc(d, 'leaderboard', uid), Object.assign({ username: best[uid].username }, next, { at: F.serverTimestamp() })); n++; }
+        catch(e){ console.warn('leaderboard backfill', uid, e && e.code); }
+      }
+      Object.keys(realCache).forEach(k => delete realCache[k]);
+      return n;
+    } catch(e){ console.warn('leaderboard backfill', e && e.code); return 0; }
+  }
+  LB.adminBackfill = (force) => { if (force) lastFill = 0; return adminBackfill(); };
+  bus.on('menuOpen', () => setTimeout(adminBackfill, 2000));
+  bus.on('cloudStatus', e => { if (e && e.online) setTimeout(adminBackfill, 2000); });
 
   const realCache = {};   // stat -> {t, rows}
   async function fetchReal(stat){
@@ -310,7 +374,10 @@
       }
       if (oldRank[r.id] > +el.dataset.rank){ el.classList.remove('up'); void el.offsetWidth; el.classList.add('up'); }
     });
-    if (m.me && !m.me.rank && m.me.value > 0){ meEl.hidden = false; meEl.textContent = 'You: #— · ' + fmt(m.me.value); }
+    if (m.me && !m.me.rank && m.me.value > 0){
+      const v = m.me.value, one = v === 1, unit = { wins: one ? 'duel win' : 'duel wins', logs: one ? 'log' : 'logs', rebirths: one ? 'rebirth' : 'rebirths', acorns: one ? 'acorn' : 'acorns' }[stat] || '';
+      meEl.hidden = false; meEl.textContent = 'You · ' + fmt(v) + ' ' + unit + ' · not in top 50 yet';
+    }
     else meEl.hidden = true;
   }
 

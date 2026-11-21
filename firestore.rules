@@ -128,10 +128,14 @@ service cloud.firestore {
       function L() { return request.resource.data; }
       function okInt(v, cap) { return v is int && v >= 0 && v <= cap; }
       allow read: if true;
-      allow create, update: if isOwner(uid)
+      // the owner writes their own entry; the admin (Shiv) may backfill anyone's entry from their saves,
+      // but only under the username that uid really owns
+      allow create, update: if signedIn()
         && L().keys().hasOnly(['username', 'wins', 'logs', 'rebirths', 'acorns', 'at'])
         && L().keys().hasAll(['username', 'wins', 'logs', 'rebirths', 'acorns', 'at'])
-        && L().username is string && L().username.size() <= 16 && ownsName(L().username.lower())
+        && L().username is string && L().username.size() <= 16
+        && ((isOwner(uid) && ownsName(L().username.lower()))
+          || (isShiv() && get(/databases/$(database)/documents/usernames/$(L().username.lower())).data.uid == uid))
         && okInt(L().wins, 1000000) && okInt(L().rebirths, 1000) && okInt(L().acorns, 100000000)
         && num(L().logs) && L().logs >= 0
         && (resource == null || L().wins <= resource.data.wins + 20)
