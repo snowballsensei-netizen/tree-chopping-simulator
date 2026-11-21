@@ -1,9 +1,10 @@
 /* audio.js — WebAudio-synthesised SFX + procedural per-stage music (no audio files).
    API: play(name, opts?), setMusicVolume(0..1), setSfxVolume(0..1), startMusic(), stopMusic(), unlock(),
         setMuted(bool), toggleMute(), setStage(i), playTrack(name), muted, musicVolume, sfxVolume, stage, track, ctx
-   Tracks: 'title', 'stage0'..'stage7' (Oak, Birch, Pine, Redwood, Cherry, Tundra, Crystal, Golden)
+   Tracks: 'title', 'stage0'..'stage7' (Oak, Birch, Pine, Redwood, Cherry, Tundra, Crystal, Golden), 'battle' (friend duels:
+        duelMusic(true|false) crossfades to it and back to the stage track; duelSting(won) fades it out + victory / aww sting)
    SFX names: chop, chip, buy, denied, log, achievement, squirrel, caught, frenzy, coffee, rebirth/timber, sprout,
-        click, toast, fanfare (stage-arrival; opts.stage)
+        click, toast, fanfare (stage-arrival; opts.stage), victory, aww, ready (opts.go)
    chop / chip / log / fanfare are stage-flavoured (current stage, or opts.stage). */
 (function(){
   const TCS = window.TCS;
@@ -124,7 +125,16 @@
     flute(out, n, t, vol, dur){ const f = midi(n);
       tone(out, { f, t, a: 0.05, dur: Math.max(dur, 0.25), vol });
       noise(out, { t, a: 0.03, dur: 0.08, vol: vol * 0.12, freq: f * 2, q: 6 }); },
+    // chiptune lead: square + octave pulse under a snappy lowpass (battle track)
+    chipLead(out, n, t, vol, dur){ const f = midi(n);
+      ftone(out, { f, type: 'square', t, a: 0.005, dur: Math.max(Math.min(dur, 0.32), 0.1), vol: vol * 0.5, cut: 3400, cut2: 1400, q: 2 });
+      ftone(out, { f: f * 2, type: 'square', t, a: 0.004, dur: 0.06, vol: vol * 0.16, cut: 4200, detune: 6 }); },
+    stab(out, n, t, vol, dur){ const f = midi(n);
+      ftone(out, { f, type: 'sawtooth', t, a: 0.004, dur: Math.min(dur, 0.12), vol: vol * 0.75, cut: 2600, cut2: 700, q: 3 }); },
     // basses
+    bassDrive(out, n, t, vol, dur){ const f = midi(n);
+      ftone(out, { f, type: 'sawtooth', t, a: 0.004, dur: Math.min(dur, 0.16), vol: vol * 0.5, cut: 900, cut2: 180, q: 5 });
+      tone(out, { f, type: 'triangle', t, a: 0.004, dur: Math.min(dur, 0.16), vol: vol * 0.55 }); },
     bassPluck(out, n, t, vol, dur){ pluck(out, n, t, vol, Math.min(dur, 0.45)); },
     bassSub(out, n, t, vol, dur){ const f = midi(n);
       tone(out, { f, t, a: 0.006, dur: Math.min(dur, 0.5), vol });
@@ -155,7 +165,7 @@
   };
 
   // ---------- track definitions ----------
-  const SCALES = { major: [0,2,4,5,7,9,11], mix: [0,2,4,5,7,9,10], lyd: [0,2,4,6,7,9,11] };
+  const SCALES = { major: [0,2,4,5,7,9,11], mix: [0,2,4,5,7,9,10], lyd: [0,2,4,6,7,9,11], minor: [0,2,3,5,7,8,10] };
   // chords are scale degrees (0=I, 3=IV, 4=V, 5=vi, 1=ii, 2=iii, 6=bVII in mixolydian)
   // drum strings: 16 sixteenth-steps, x = hit, o = soft hit
   const TRACKS = {
@@ -194,7 +204,11 @@
     stage7: { bpm: 128, root: 62, scale: 'major', swing: 0, seed: 97, // Golden Temple: triumphant brass
       A: [0,4,5,3, 0,3,4,4], B: [3,4,0,5, 3,4,4,4],
       lead: 'brass', lead2: 'bell', chord: 'pluck', chordPat: 'x-x-x-x-x-x-x-x-', bass: 'bassSub', bassPat: 'r---r---f---o---',
-      pad: 0.018, drums: { kick: 'x---x---x---x---', snare: '----x-------x---', hat: '--x---x---x---x-', tom: '--------------xx' }, leadOct: 0, density: 0.6 }
+      pad: 0.018, drums: { kick: 'x---x---x---x---', snare: '----x-------x---', hat: '--x---x---x---x-', tom: '--------------xx' }, leadOct: 0, density: 0.6 },
+    battle: { bpm: 160, root: 57, scale: 'minor', swing: 0, seed: 131, noIntro: true, // friend duels: driving A-minor chiptune
+      A: [0,5,2,6, 0,5,6,4], B: [3,3,0,0, 5,6,4,4],
+      lead: 'chipLead', lead2: 'brass', chord: 'stab', chordPat: '--x---x---x---xx', bass: 'bassDrive', bassPat: 'r-r-r-o-r-r-f-o-',
+      drums: { kick: 'x---x---x---x-x-', snare: '----x-------x---', hat: 'xoxoxoxoxoxoxoxo', clap: '------------x---' }, leadOct: 12, density: 0.8 }
   };
 
   // seeded RNG so melodies are fixed per track
@@ -242,7 +256,7 @@
     const swing = (st % 2 === 1) ? def.swing * def.step * 2 : 0;
     const tt = t + swing;
     const triad = [deg, deg + 2, deg + 4].map(x => degMidi(def, x));
-    const intro = cycle === 0 && sec === 0 && b8 < 2;
+    const intro = cycle === 0 && sec === 0 && b8 < 2 && !def.noIntro;
     const breakdown = sec === 2 && b8 >= 6 && cycle % 2 === 1;
     // pad once per bar
     if (def.pad && st === 0) pad(def.padOut || out, triad, t, def.pad * (sec === 0 ? 0.8 : 1), def.step * 16);
@@ -474,6 +488,32 @@
       noise(o, { t: t + 1.25, dur: 0.9, vol: 0.6, type: 'lowpass', freq: 1800, freq2: 200 });
       tone(o, { f: 70, f2: 30, t: t + 1.25, dur: 0.7, vol: 0.9 });
     },
+    // duel outro stings: short brass + chip victory fanfare / descending "aww" wah-wah
+    // duel countdown tick: READY / SET (opts.go = false) and a higher, brighter GO!
+    ready(o, opts){
+      const t = ctx.currentTime, go = opts && opts.go;
+      if (go){ [79, 86, 91].forEach((n, i) => INST.chipLead(o, n, t + i * 0.035, 0.24, 0.18)); DRUM.kick(o, t, 1); noise(o, { t, a: 0.004, dur: 0.25, vol: 0.08, type: 'highpass', freq: 5000 }); }
+      else { INST.chipLead(o, 67, t, 0.22, 0.12); tone(o, { f: midi(79), t, a: 0.001, dur: 0.05, vol: 0.08 }); DRUM.rim(o, t, 1.2); }
+    },
+    victory(o){
+      const t = ctx.currentTime + 0.02, q = 0.11;
+      [67, 72, 76, 79].forEach((n, i) => INST.chipLead(o, n, t + i * q, 0.26, q * 0.9));
+      [72, 76, 79, 84].forEach((n, i) => INST.brass(o, n, t + 4 * q + i * 0.01, 0.12, 0.7));
+      INST.chipLead(o, 84, t + 4 * q, 0.22, 0.5);
+      DRUM.kick(o, t + 4 * q, 1.1); DRUM.snare(o, t + 4 * q, 1.2);
+      noise(o, { t: t + 4 * q, a: 0.01, dur: 0.9, vol: 0.07, type: 'highpass', freq: 6000 });
+      [84, 88, 91, 96].forEach((n, i) => tone(o, { f: midi(n), t: t + 4 * q + 0.15 + i * 0.05, a: 0.002, dur: 0.3, vol: 0.05 }));
+    },
+    aww(o){
+      const t = ctx.currentTime + 0.02;
+      [[64, 0, 0.22], [63, 0.26, 0.22], [62, 0.52, 0.7]].forEach(([n, at, d]) => {
+        const f = midi(n);
+        ftone(o, { f, type: 'sawtooth', t: t + at, a: 0.03, dur: d, vol: 0.12, cut: 1300, cut2: 500, q: 3 });
+        ftone(o, { f: f * 1.004, type: 'square', t: t + at, a: 0.03, dur: d, vol: 0.05, cut: 900 });
+      });
+      tone(o, { f: midi(62), f2: midi(58), type: 'triangle', t: t + 0.6, a: 0.05, dur: 0.6, vol: 0.12, curve: 'lin' });
+      tone(o, { f: midi(38), t: t + 0.52, a: 0.01, dur: 0.6, vol: 0.18 });
+    },
     sprout(o){
       const t = ctx.currentTime;
       tone(o, { f: 300, f2: 900, type: 'sine', t, a: 0.02, dur: 0.25, vol: 0.2 });
@@ -515,10 +555,27 @@
   const g = () => { unlock(); if (ready()){ ['pointerdown','keydown','touchend'].forEach(e => window.removeEventListener(e, g, true)); } };
   ['pointerdown','keydown','touchend'].forEach(e => window.addEventListener(e, g, true));
 
+  // friend duels: battle track while the duel overlay is up, then back to whatever should play (stage / title)
+  let battle = false;
+  function duelMusic(on){
+    on = !!on; if (on === battle) return;
+    battle = on;
+    if (on) playTrack('battle');
+    else { if (inGame) stage = ((dataStage() % 8) + 8) % 8; playTrack(inGame ? 'stage' + stage : 'title'); }
+  }
+  // the outro: fade the battle loop out quickly under a victory / aww sting (stage music comes back on duelMusic(false))
+  function duelSting(won){
+    if (ctx && battle){
+      const t = ctx.currentTime;
+      players.forEach(p => { if (!p.dying && p.name === 'battle'){ p.dying = true; p.endAt = t + 0.8;
+        p.gain.gain.cancelScheduledValues(t); p.gain.gain.setTargetAtTime(0.0001, t, 0.15); } });
+    }
+    play(won ? 'victory' : 'aww');
+  }
   function setStage(i, fanfare){
     i = ((+i || 0) % 8 + 8) % 8;
     stage = i;
-    if (inGame) playTrack('stage' + i);
+    if (inGame && !battle) playTrack('stage' + i);
     if (fanfare) play('fanfare', { stage: i });
   }
   function dataStage(){
@@ -555,7 +612,9 @@
 
   let inGame = false;
   TCS.audio = {
-    play, startMusic, stopMusic, unlock, playTrack, renderOffline,
+    play, startMusic, stopMusic, unlock, playTrack, renderOffline, duelMusic, duelSting,
+    get battle(){ return battle; },
+    get playing(){ const p = players.find(x => !x.dying); return p ? p.name : null; },
     setStage(i){ setStage(i, false); },
     setMusicVolume(v){ music = Math.max(0, Math.min(1, +v || 0)); applyGains(); },
     setSfxVolume(v){ sfx = Math.max(0, Math.min(1, +v || 0)); applyGains(); },
@@ -575,9 +634,9 @@
   bus.on('frenzyStart', () => play('frenzy'));
   bus.on('coffeeStart', () => play('coffee'));
   bus.on('squirrel', () => play('caught'));
-  bus.on('menuOpen', () => { inGame = false; playTrack('title'); });
+  bus.on('menuOpen', () => { inGame = false; battle = false; playTrack('title'); });
   bus.on('gameStart', () => { inGame = true; });
-  bus.on('load', () => { inGame = true; stage = ((dataStage() % 8) + 8) % 8; playTrack('stage' + stage); });
+  bus.on('load', () => { inGame = true; stage = ((dataStage() % 8) + 8) % 8; if (!battle) playTrack('stage' + stage); });
   bus.on('rebirth', () => { pendingFanfare = true; setTimeout(() => play('sprout'), 2600); // timber: fx plays it at the cinematic start
     // fallback if no cinematic follows
     setTimeout(() => { if (pendingFanfare){ pendingFanfare = false; setStage(dataStage(), true); } }, 9000); });

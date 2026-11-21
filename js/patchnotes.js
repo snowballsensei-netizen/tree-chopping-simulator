@@ -3,8 +3,9 @@
    API: TCS.patchnotes.show() (force open), .VERSION */
 (function(){
   const TCS = window.TCS, KEY = 'tcs_patch_seen';
-  const VERSION = '2026-11-20';
+  const VERSION = '2026-11-20b';
   const NOTES = [
+    ['🏆', 'Duel finale', 'Ready, Set, GO!, battle music while you duel, and a victory celebration for the winner'],
     ['👥', 'Friends', 'Tap the friends button (or press F) to add friends by username'],
     ['⚔️', 'Duels', 'Wager logs or acorns, then race your friend\'s lumberjack to 250 chops'],
     ['🌲', 'Easier rebirths', 'Later stages no longer get impossibly expensive'],

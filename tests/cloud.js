@@ -2,7 +2,7 @@
    Start the emulators from the project root first (uses firebase.json + firestore.rules):
      npx firebase-tools emulators:start --only auth,firestore --project demo-tcs
    then:  node tests/cloud.js     (the page is opened with ?emu, which uses a demo config + the local emulators)
-   SHOTS=<dir> also saves duel screenshots (desktop logs duel seen by Q, phone 390x844 acorn duel seen by P).
+   SHOTS=<dir> also saves duel screenshots (desktop logs duel seen by Q/winner + P/loser, phone 390x844 acorn duel seen by P/winner + Q/loser).
    Exit code 0 = all passed. */
 const http = require('http');
 const fs = require('fs');
@@ -309,6 +309,9 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     check('both players enter the duel overlay', await P.page.$('#duel-ov') !== null && await Q.page.$('#duel-ov') !== null);
     const vsTxt = X => X.page.evaluate(() => { const e = document.querySelector('#duel-ov.intro .dv-vs'); return e ? e.textContent.toLowerCase() : null; });
     const vsP = await vsTxt(P), vsQ = await vsTxt(Q);
+    const trk = X => X.page.evaluate(() => TCS.audio.track);
+    const trP = await trk(P), trQ = await trk(Q);
+    check('battle music during the duel', trP === 'battle' && trQ === 'battle', [trP, trQ]);
     check('VS intro shows both names', [vsP, vsQ].every(t => t && t.indexOf(pn.toLowerCase()) >= 0 && t.indexOf(qn.toLowerCase()) >= 0 && /vs/.test(t)), [vsP, vsQ]);
     await Q.page.waitForTimeout(700); await shot(Q, 'duel-desktop-1-vs');
     const seen = X => X.page.evaluate(() => { const s = TCS.duel3d.sides; return s && { active: TCS.duel3d.active, me: [s.me.stage, s.me.cos], op: [s.op.stage, s.op.cos] }; });
@@ -317,7 +320,14 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
       && sp.me[0] === 3 && sp.op[0] === 6 && sp.op[1].hat === 'crown' && sp.op[1].face === 'braid' && sp.op[1].boots === 'rocketboots'
       && sq.me[0] === 6 && sq.op[0] === 3 && sq.op[1].hat === 'cowboy' && sq.op[1].face === 'goggles' && !sq.op[1].boots, { sp, sq });
     const preChop = await Q.page.evaluate(() => TCS.friends.chop());
-    await Q.page.waitForTimeout(4300);
+    // READY -> SET -> GO! (GO! only once chops count)
+    const words = []; let goLive = null;
+    for (let tEnd = Date.now() + 4300; Date.now() < tEnd;) {
+      const w = await Q.page.evaluate(() => { const b = document.querySelector('.dv-big'); return { t: b ? b.textContent : '', live: !!TCS.friends.live && performance.now() >= TCS.friends.live.goAt }; });
+      if (w.t && words[words.length - 1] !== w.t) { words.push(w.t); if (w.t === 'SET' && SHOTS) { await Q.page.waitForTimeout(350); await shot(Q, 'duel-desktop-1b-set'); } if (w.t === 'GO!') goLive = w.live; }
+      await Q.page.waitForTimeout(80);
+    }
+    check('READY / SET / GO! countdown, GO! when chopping opens', words.join(',') === 'READY,SET,GO!' && goLive === true, { words, goLive });
     // a cheating finish (250 chops right after GO) is rejected by the rules' click-rate cap
     const cheat = await P.page.evaluate(async id => {
       const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app);
@@ -344,18 +354,24 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     check('opponent progress shows live', oppSeen > 20, oppSeen);
     await P.page.waitForFunction(() => __res.length >= 1, null, { timeout: 20000 }).catch(() => {});
     await Q.page.waitForFunction(() => __res.length >= 1, null, { timeout: 20000 }).catch(() => {});
-    await Promise.all([P, Q].map(X => X.page.waitForSelector('.dv-result', { timeout: 4000 }).catch(() => {})));   // shown once the falling tree lands
-    const rp = await P.page.evaluate(() => ({ res: __res, wood: TCS.state.data.wood, txt: (document.querySelector('.dv-result') || {}).textContent }));
-    const rq = await Q.page.evaluate(() => ({ res: __res, wood: TCS.state.data.wood, txt: (document.querySelector('.dv-result') || {}).textContent }));
+    await Promise.all([P, Q].map(X => X.page.waitForSelector('.dv-outro', { timeout: 4000 }).catch(() => {})));   // shown once the falling tree lands
+    const outroOf = X => X.page.evaluate(() => { const o = document.querySelector('.dv-outro'), w = document.querySelector('.dv-slot.dv-winner');
+      return { res: __res, wood: TCS.state.data.wood, name: o && o.querySelector('.dv-win-n').textContent, wager: o && o.querySelector('.dv-win-w').textContent,
+        title: o && o.querySelector('.dv-win-t').textContent, winSlot: w && (w.classList.contains('me') ? 'me' : 'op'), outro3d: !!(TCS.duel3d.sides && (TCS.duel3d.sides.me.role || TCS.duel3d.sides.op.role)) }; });
+    const rp = await outroOf(P), rq = await outroOf(Q);
     check('exactly one winner (Q won, P lost)', rp.res.length === 1 && rq.res.length === 1 && rq.res[0].won && !rp.res[0].won, { p: rp.res, q: rq.res });
     check('balances after logs duel', Math.abs(rp.wood - (1e6 - W)) < 1 && Math.abs(rq.wood - (5e5 + W)) < 1, { p: rp.wood, q: rq.wood });
-    await shot(Q, 'duel-desktop-4-result');
-    check('result line shown', /you won \+200K logs/i.test(rq.txt || '') && /you lost/i.test(rp.txt || ''), [rp.txt, rq.txt]);
-    await Q.page.waitForTimeout(4500);
-    check('result auto-closes', await Q.page.$('#duel-ov') === null);
+    await Q.page.waitForTimeout(900); await shot(P, 'duel-desktop-5-outro-loser'); await shot(Q, 'duel-desktop-4-outro-winner');
+    check('outro shows the winner name on both clients', rp.title === 'WINNER' && rq.title === 'WINNER' && rp.name.toLowerCase() === qn.toLowerCase() && rq.name.toLowerCase() === qn.toLowerCase()
+      && rq.winSlot === 'me' && rp.winSlot === 'op' && rp.outro3d && rq.outro3d, { p: [rp.name, rp.winSlot], q: [rq.name, rq.winSlot] });
+    check('wager line in the outro', /^\+200K logs$/i.test(rq.wager || '') && /^−200K logs$/i.test(rp.wager || ''), [rp.wager, rq.wager]);
+    await Q.page.waitForTimeout(3200);
+    check('outro auto-closes', await Q.page.$('#duel-ov') === null && await P.page.$('#duel-ov') === null);
+    const tq = await Q.page.evaluate(() => ({ t: TCS.audio.track, b: TCS.audio.battle })), tp = await P.page.evaluate(() => ({ t: TCS.audio.track, b: TCS.audio.battle }));
+    check('stage music resumes after the duel', tq.t === 'stage6' && !tq.b && tp.t === 'stage3' && !tp.b, { tp, tq });
     const cq = await cloudDoc(Q.page, uidQ, 0);
     check('winnings flushed to the cloud save', cq && Math.abs(cq.parsed.wood - (5e5 + W)) < 1, cq && cq.parsed.wood);
-    await P.page.waitForTimeout(1500);
+    await P.page.waitForFunction(async id => { const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app); try { return !(await F.getDoc(F.doc(db, 'duels', id))).exists(); } catch (e) { return true; } }, dl.id, { timeout: 10000, polling: 500 }).catch(() => {});
     const gone = await P.page.evaluate(async id => { const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app); try { return (await F.getDoc(F.doc(db, 'duels', id))).exists(); } catch (e) { return e.code; } }, dl.id);
     check('duel doc cleaned up after both paid', gone === false || gone === 'permission-denied', gone);
 
@@ -372,11 +388,12 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     // acorn duel: P wins 5 acorns
     const da = await P.page.evaluate(u => TCS.friends.challenge(u, 'acorns', 5), uidQ);
     await Q.page.waitForFunction(id => TCS.friends.duels[id] && TCS.friends.duels[id].status === 'pending', da.id, { timeout: 10000 }).catch(() => {});
-    if (SHOTS) await P.page.setViewportSize({ width: 390, height: 844 });
+    if (SHOTS) { await P.page.setViewportSize({ width: 390, height: 844 }); await Q.page.setViewportSize({ width: 390, height: 844 }); }
     const accA = await Q.page.evaluate(id => TCS.friends.acceptDuel(id), da.id);
     await P.page.waitForFunction(() => !!TCS.friends.live, null, { timeout: 10000 }).catch(() => {});
     await P.page.waitForTimeout(700); await shot(P, 'duel-phone-1-vs');
-    await P.page.waitForTimeout(3600);
+    await P.page.waitForFunction(() => { const b = document.querySelector('.dv-big'); return b && b.textContent === 'GO!'; }, null, { timeout: 6000, polling: 50 }).catch(() => {});
+    await P.page.waitForTimeout(120); await shot(P, 'duel-phone-1b-go');
     for (let i = 0; i < 700; i++) {
       if (await P.page.evaluate(() => !TCS.friends.live || TCS.friends.live.mine >= TCS.data.DUEL_HP)) break;
       await P.page.keyboard.press('Space'); if (i % 6 === 0) await Q.page.keyboard.press('Space');
@@ -384,7 +401,8 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
       await P.page.waitForTimeout(50);
     }
     await P.page.waitForTimeout(700); await shot(P, 'duel-phone-3-fall');
-    await P.page.waitForTimeout(1200); await shot(P, 'duel-phone-4-result');
+    await P.page.waitForSelector('.dv-outro', { timeout: 6000 }).catch(() => {});
+    await P.page.waitForTimeout(900); await shot(Q, 'duel-phone-5-outro-loser'); await shot(P, 'duel-phone-4-outro-winner');
     await P.page.waitForFunction(() => __res.length >= 2, null, { timeout: 20000 }).catch(() => {});
     await Q.page.waitForFunction(() => __res.length >= 1, null, { timeout: 20000 }).catch(() => {});
     const ap = await P.page.evaluate(() => ({ a: TCS.state.data.acorns, r: __res[1] })), aq = await Q.page.evaluate(() => ({ a: TCS.state.data.acorns, r: __res[0] }));

@@ -5,9 +5,9 @@
      presence/{uid} = {username, lastSeen, wood, acorns}      every 60 s while playing (online dot + balances the duel rules check)
      duels/{id} = {a, b, aName, bName, kind:'logs'|'acorns', amount, status, createdAt, startAt, ta, tb, pa, pb, winner, endAt, paidA, paidB,
                    aStage, aCos (challenger's look, at create), bStage, bCos (challenged's look, at accept)}   stage 0..7, cos 'hat|face|boots'
-   Duel: pending (2 min) -> accepted (VS intro + 3-2-1, then chop DUEL_HP times) -> done (winner via transaction). Each player writes only
+   Duel: pending (2 min) -> accepted (VS intro + READY-SET-GO, then chop DUEL_HP times) -> done (winner via transaction). Each player writes only
    its own pa/ta (<= 4/s + 3 s heartbeat). Payout once per player: S.data.duelsPaid ids + paidA/paidB on the doc.
-   UI: friends button next to the outfit buttons + F, one compact panel, incoming duel cards, duel overlay, one-line result.
+   UI: friends button next to the outfit buttons + F, one compact panel, incoming duel cards, duel overlay, winner outro.
    API (TCS.friends): active, friends, incoming, duels, live, request(name), accept(uid), decline(uid), remove(uid),
         challenge(uid, kind, amount), acceptDuel(id), declineDuel(id), chop(), toggle(), open(), close() */
 (function(){
@@ -240,6 +240,7 @@
       goAt: now + Math.max(0, CD - since), introAge: since, clicks: [], lastWrite: 0, finishing: false, lastForfeit: 0, done: false, fellAt: 0 };
     TCS.duel = true;
     close();
+    try { TCS.audio.duelMusic(true); } catch(e){}
     buildOverlay();
     // challenger: re-check my balance now that it's on (abort during the countdown if it's gone)
     if (side === 'a' && bal(d.kind) < d.amount) F.updateDoc(dref(d.id), { status: 'cancelled' }).catch(() => {});
@@ -305,6 +306,7 @@
     clearInterval(L.timer); clearTimeout(L.resWait); FR.live = null; TCS.duel = false;
     try { TCS.duel3d && TCS.duel3d.stop(); } catch(e){ console.warn(e); }
     document.body.classList.remove('duel-on');
+    try { TCS.audio.duelMusic(false); } catch(e){}
     if (ui && ui.ov){ ui.ov.remove(); ui.ov = null; }
     if (!silent) render();
   }
@@ -413,7 +415,7 @@
   bus.on('menuOpen', close);
 
   // duel overlay: wager (small), two 3D vignettes (js/duel3d.js draws them into .dv-view with the main renderer), each with
-  // its name + HP bar, a short VS intro, 3-2-1, then one result line over the vignettes
+  // its name + HP bar, a short VS intro, READY / SET / GO!, then the winner outro (WINNER banner + wager line)
   function slot(cls, name){
     return '<div class="dv-slot ' + cls + '"><div class="dv-view"></div><div class="dv-name outlined outlined-sm">' + esc(name) + '</div>' +
       '<div class="dv-hp"><i></i><span class="outlined outlined-sm"></span></div></div>';
@@ -452,24 +454,44 @@
     const bar = (el, tx, n) => { const left = Math.max(0, HP - n); el.style.width = (left / HP * 100) + '%'; tx.textContent = left + ' HP'; };
     bar(v.meHp, v.meT, L.mine); bar(v.opHp, v.opT, L.opp);
     const left = L.goAt - now, c = Math.ceil(left / 1000);
-    const t = left > 3000 ? '' : c > 0 ? String(c) : now - L.goAt < 700 ? 'CHOP!' : '';
-    if (v.big._t !== t){ v.big._t = t; v.big.textContent = t; v.big.classList.remove('pop'); void v.big.offsetWidth; if (t) v.big.classList.add('pop'); }
+    // READY (3 s before GO) -> SET (1.5 s before) -> GO! exactly at goAt (chopping allowed), each with a tick SFX
+    const t = left > 3000 ? '' : left > 1500 ? 'READY' : left > 0 ? 'SET' : now - L.goAt < 800 ? 'GO!' : '';
+    if (v.big._t !== t){
+      v.big._t = t; v.big.textContent = t; v.big.className = 'dv-big outlined' + (t ? ' rsg-' + (t === 'GO!' ? 'go' : t.toLowerCase()) : '');
+      void v.big.offsetWidth; if (t){ v.big.classList.add('pop'); try { TCS.audio.play('ready', { go: t === 'GO!' }); } catch(e){} }
+    }
   }
+  // winner outro (~3.3 s, skippable after 1 s): the winner's vignette takes focus (grows to the centre, camera pushes in,
+  // victory hop + confetti), the loser's shrinks/darkens and slumps; banner WINNER + name + the wager line
+  const OUTRO = 3300, SKIP_AFTER = 1000;
   function showResult(msg, won){
     const L = FR.live; if (!L || !ui.ov) return toast(esc(msg));
     clearInterval(L.timer); L.done = true;
-    if (!won && L.opp >= HP) fall('op');
+    const forfeit = (won ? L.mine : L.opp) < HP;
+    if (!won && !forfeit) fall('op');
     drawLive();
-    // let the winner's tree finish falling first
-    const wait = L.fellAt ? Math.max(0, 1400 - (performance.now() - L.fellAt)) : 0;
+    // let the winner's tree finish falling first (no wait on a forfeit: nothing fell)
+    const wait = L.fellAt && !forfeit ? Math.max(0, 1400 - (performance.now() - L.fellAt)) : 0;
     ui.ov._res = true;
     L.resWait = setTimeout(() => {
-      if (!ui.ov || FR.live !== L) return;
-      ui.ov._shown = true; ui.ov.classList.add('result', won ? 'won' : 'lost');
-      const big = ui.ov.querySelector('.dv-big'); if (big) big.textContent = '';
-      const r = document.createElement('div'); r.className = 'dv-result outlined'; r.textContent = msg; ui.ov.appendChild(r);
-      sfx(won ? 'fanfare' : 'denied');
-      ui.resT = setTimeout(closeResult, 3500);
+      const ov = ui.ov;
+      if (!ov || FR.live !== L) return;
+      const wSide = won ? 'me' : 'op', name = won ? (C.username || 'You') : L.opName;
+      ov.classList.add('result', 'outro', won ? 'won' : 'lost', 'win-' + wSide);
+      ov.querySelector('.dv-slot.' + wSide).classList.add('dv-winner');
+      ov.querySelector('.dv-slot.' + (won ? 'op' : 'me')).classList.add('dv-loser');
+      const big = ov.querySelector('.dv-big'); if (big) big.textContent = '';
+      const r = document.createElement('div'); r.className = 'dv-outro';
+      r.innerHTML = '<div class="dv-win-t outlined">WINNER</div><div class="dv-win-n outlined">' + esc(name) + '</div>' +
+        '<div class="dv-win-w outlined outlined-sm ' + (won ? 'gain' : 'loss') + '">' + (won ? '+' : '−') + U.fmt(L.amount) + ' ' + unit(L.kind, L.amount) + '</div>' +
+        (forfeit ? '<div class="dv-win-f outlined outlined-sm">' + (won ? 'opponent forfeited' : 'forfeit') + '</div>' : '');
+      r.title = msg;
+      ov.appendChild(r);
+      const light = window.innerWidth < 600 || Math.min(window.innerWidth, window.innerHeight) < 500;
+      try { TCS.duel3d && TCS.duel3d.outro(wSide, { light }); } catch(e){ console.warn(e); }
+      try { TCS.audio.duelSting(won); } catch(e){}
+      setTimeout(() => { if (ui.ov === ov) ov._shown = true; }, SKIP_AFTER);
+      ui.resT = setTimeout(closeResult, OUTRO);
     }, wait);
   }
   function closeResult(){ clearTimeout(ui && ui.resT); endLive(); }
