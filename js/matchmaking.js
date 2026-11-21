@@ -10,7 +10,9 @@
    API (TCS.mm): bots, cpsFor(streak), stakes(), available(), find(opts), cancel(), toggle(), chop(), state, live, _test {searchMs, cps} */
 (function(){
   const TCS = window.TCS, bus = TCS.bus, D = TCS.data, U = TCS.util;
-  const HP = D.DUEL_HP || 250, CD = (D.DUEL_COUNTDOWN || 4.5) * 1000, MAX_BOT = 40;
+  const HP = D.DUEL_HP || 250, CD = (D.DUEL_COUNTDOWN || 4.5) * 1000;
+  // bots click EASE x slower than the streak bands below (user: ease by 1.5x): 10-18 -> 6.7-12, 19-26 -> 12.7-17.3, 27-40 -> 18-26.7
+  const EASE = 1.5, MAX_BOT = 40 / EASE;
   const S = () => TCS.state;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
   const sfx = n => { try { TCS.audio.play(n); } catch(e){} };
@@ -68,9 +70,11 @@
   // streak: + consecutive wins / − consecutive losses. Losing big -> 10-18, default/winning some -> 19-26, massive win streak -> 27-40
   function cpsFor(streak){
     streak = Math.round(+streak || 0);
-    if (streak <= -2) return clamp(18 - 2 * (-streak - 2), 10, 18);
-    if (streak <= 5) return clamp(19 + (streak + 1) * 1.2, 19, 26);
-    return clamp(27 + (streak - 6) * 2, 27, 40);
+    let band;
+    if (streak <= -2) band = clamp(18 - 2 * (-streak - 2), 10, 18);
+    else if (streak <= 5) band = clamp(19 + (streak + 1) * 1.2, 19, 26);
+    else band = clamp(27 + (streak - 6) * 2, 27, 40);
+    return band / EASE;
   }
   MM.cpsFor = cpsFor;
 
@@ -206,7 +210,7 @@
     hideCard();
     if (!MM.available()){ MM.state = 'idle'; return; }
     const m = rec(), st = MM.stakes_ || stakes();
-    const target = MM._test.cps != null ? MM._test.cps : Math.min(MAX_BOT, cpsFor(m.streak) + 1.5 * bot.skill);
+    const target = MM._test.cps != null ? MM._test.cps : Math.min(MAX_BOT, cpsFor(m.streak) + 1.5 * bot.skill / EASE);
     const cps = Math.max(0.1, Math.min(MAX_BOT, target));
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     m.live = { id, bot: bot.name, at: Date.now(), lose: st.lose };   // closing the tab from here on = a loss next load

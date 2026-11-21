@@ -485,8 +485,10 @@ async function snapshot(page) {
     check('300 matchmaking bots: unique, valid names, distinct from leaderboard bots, real cosmetics, names taken for sign-up, button in #outfit-btns',
       pool.n === 300 && pool.uniq === 300 && pool.re && pool.lb === 0 && pool.looks && pool.stages === 8 && pool.isBot && pool.taken === 'Username taken' && pool.btn, pool);
     const cps = await mp.evaluate(() => ({ m5: TCS.mm.cpsFor(-5), z: TCS.mm.cpsFor(0), p8: TCS.mm.cpsFor(8), lo: TCS.mm.cpsFor(-99), hi: TCS.mm.cpsFor(99), m2: TCS.mm.cpsFor(-2), p5: TCS.mm.cpsFor(5), p6: TCS.mm.cpsFor(6) }));
-    check('bot CPS tiers: streak -5 in 10-18, 0 in 19-26, +8 in 27-40 (clamped 10..40)', cps.m5 >= 10 && cps.m5 <= 18 && cps.z >= 19 && cps.z <= 26 && cps.p8 >= 27 && cps.p8 <= 40 &&
-      cps.lo === 10 && cps.hi === 40 && cps.m2 === 18 && cps.p5 === 26 && cps.p6 === 27, cps);
+    // bands 10-18 / 19-26 / 27-40, eased 1.5x
+    const E = 1.5;
+    check('bot CPS tiers (bands / 1.5): streak -5 in 6.7-12, 0 in 12.7-17.3, +8 in 18-26.7', cps.m5 >= 10 / E && cps.m5 <= 18 / E && cps.z >= 19 / E && cps.z <= 26 / E && cps.p8 >= 27 / E && cps.p8 <= 40 / E &&
+      cps.lo === 10 / E && cps.hi === 40 / E && cps.m2 === 18 / E && cps.p5 === 26 / E && cps.p6 === 27 / E, cps);
     // real queue (3-9 s) via the M key
     await mp.evaluate(() => { TCS.state.data.wood = 1e6; window.__mmEv = 0; TCS.bus.on('duelResult', () => window.__mmEv++); });
     await mp.keyboard.press('KeyM'); await mp.waitForTimeout(1300);
@@ -501,7 +503,7 @@ async function snapshot(page) {
     await mp.waitForTimeout(500);
     const vs = await mp.evaluate(() => ({ a: (document.querySelector('#duel-ov .vs-a') || {}).textContent, b: (document.querySelector('#duel-ov .vs-b') || {}).textContent, bot: TCS.mm.live && TCS.mm.live.bot.name,
       cps: TCS.mm.live && TCS.mm.live.cps, d3: TCS.duel3d.active, duel: TCS.duel, marker: !!TCS.state.data.mm.live, intro: document.getElementById('duel-ov').classList.contains('intro') }));
-    check('VS intro shows both names, both vignettes, in-progress marker, bot CPS from streak 0 (+-1.5)', vs.a === 'You' && vs.b === vs.bot && !!vs.bot && vs.d3 && vs.duel && vs.marker && vs.cps >= 18.7 && vs.cps <= 21.7, vs);
+    check('VS intro shows both names, both vignettes, in-progress marker, bot CPS from streak 0 (+-1 after easing)', vs.a === 'You' && vs.b === vs.bot && !!vs.bot && vs.d3 && vs.duel && vs.marker && vs.cps >= 20.2 / 1.5 - 1.01 && vs.cps <= 20.2 / 1.5 + 1.01, vs);
     if (SHOTS) await mp.screenshot({ path: path.join(SHOTS, 'mm_desktop_vs.png') });
     // Esc does nothing mid-match; this natural-speed bot wins (player idle) -> lose 15 min (cap 50%)
     await mp.keyboard.press('Escape');
@@ -510,9 +512,9 @@ async function snapshot(page) {
     check('Esc ignored mid-match; bot chopping at its pace', mid.live && mid.opp > 10 && mid.panel !== 'settings', mid);
     if (SHOTS) await mp.screenshot({ path: path.join(SHOTS, 'mm_desktop_mid.png') });
     const exp1 = await mp.evaluate(() => ({ w: TCS.state.data.wood, lose: Math.min(TCS.daily.minutesOfLogs(15), Math.floor(TCS.state.data.wood * 0.5)) }));
-    await mp.waitForFunction(() => TCS.mm.live && TCS.mm.live.result, null, { timeout: 20000 }).catch(() => {});
+    await mp.waitForFunction(() => TCS.mm.live && TCS.mm.live.result, null, { timeout: 30000 }).catch(() => {});
     const r1 = await mp.evaluate(() => { const L = TCS.mm.live; return { res: L && L.result, opp: L && L.opp, el: performance.now() - (L ? L.goAt : 0), wood: TCS.state.data.wood, mm: Object.assign({}, TCS.state.data.mm), ev: window.__mmEv }; });
-    check('bot at ~20 CPS finishes 250 chops in ~10-15 s; loss = 15 min of production, streak -1', r1.res && !r1.res.won && r1.res.amount === exp1.lose && r1.opp === 250 && r1.el > 9500 && r1.el < 16000 &&
+    check('bot at ~13.5 CPS (eased) finishes 250 chops in ~15-24 s; loss = 15 min of production, streak -1', r1.res && !r1.res.won && r1.res.amount === exp1.lose && r1.opp === 250 && r1.el > 14000 && r1.el < 25000 &&
       Math.abs(exp1.w - r1.wood - exp1.lose) < 1e-6 * exp1.w + 1 && r1.mm.losses === 1 && r1.mm.streak === -1 && !r1.mm.live && r1.ev === 1, { exp1, r1 });
     await mp.waitForTimeout(2000);
     if (SHOTS) await mp.screenshot({ path: path.join(SHOTS, 'mm_desktop_lose.png') });
