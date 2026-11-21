@@ -23,7 +23,9 @@
       owned, tech: {},
       acorns: 0, acornsEarned: 0, perks: {},
       daily: { last: '', streak: 0, total: 0 },   // daily login reward (daily.js): last claimed local date, streak, total claims
+      quests: { day: '', week: '', daily: [], weekly: [], chests: {} },   // daily/weekly quests (quests.js)
       duelWins: 0,                   // duels won (friends.js payout, once per duel; leaderboard)
+      mm: { wins: 0, losses: 0, streak: 0, best: 0, live: null },   // matchmaking record (matchmaking.js): streak >0 wins / <0 losses; live = in-progress marker
       speciesIndex: 0, species: 0,   // species = stage index (alias kept in sync with speciesIndex)
       achievements: {}, cosmetics: {}, equipped: { hat: null, face: null, boots: null }, autoselect: true,
       stats: { clicks: 0, chops: 0, height: 0, squirrels: 0, frenzies: 0, rebirths: 0, coffees: 0, playTime: 0, bestPerSecond: 0 },
@@ -68,11 +70,14 @@
         displayName: sp.name + (tier ? ' ' + roman(tier + 1) : '') });
     },
     acornMult(){ return 1 + D.ACORN_BONUS * S.data.acornsEarned; },
+    // late-stage production boost: grows with the stage like the cost taper does, so late stages don't become a wall
+    // (total = max(acornMult, GROWTH^m / (1 + EASE*m)), m = stage - FROM: only kicks in once linear acorns fall behind)
+    stageMult(){ const m = Math.max(0, S.data.speciesIndex - (D.STAGE_PROD_FROM || 0)); const f = Math.pow(D.STAGE_PROD_GROWTH || 1, m) / (1 + (D.STAGE_PROD_EASE || 0) * m); return Math.max(1, f / S.acornMult()); },
     frenzyActive(){ return S.data.frenzy.timeLeft > 0; },
     coffeeActive(){ return S.data.coffee.timeLeft > 0; },
     // combined global multiplier shown in shop footer
     multiplier(){
-      return S.acornMult() * S.species().totalMult * (S.frenzyActive() ? D.FRENZY_MULT : 1) *
+      return S.acornMult() * S.stageMult() * S.species().totalMult * (S.frenzyActive() ? D.FRENZY_MULT : 1) *
         (S.coffeeActive() ? D.COFFEE_MULT : 1) * S.techMult('all');
     },
     techMult(target){

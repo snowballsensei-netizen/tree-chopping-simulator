@@ -34,7 +34,7 @@
     'Shadow','Pixel','Frost','Storm','Blaze','Turbo','Ninja','Ghost','Rocket','Thunder','Cosmic','Lucky','Sneaky','Mega','Ultra','Hyper','Lazy','Crazy','Happy','Silent',
     'Wolf','Bear','Fox','Hawk','Tiger','Panda','Otter','Beaver','Moose','Raven','Falcon','Badger','Dragon','Shark','Goose','Llama','Squirrel','Owl','Lynx','Bison'];
   const SUFFIX = ['Lord','King','Queen','Master','Pro','God','Boss','Hunter','Slayer','Jack','Chopper','Smith','Man','Girl','Boy','Beast','Legend','Main','Gamer','Plays',
-    'TTV','YT','HD','XD','Fan','Bot','Guy','Kid','Dude','Wizard'];
+    'TTV','YT','HD','XD','Fan','Pro','Guy','Kid','Dude','Wizard'];
   const SOLO = ['kaii','zyro','vexx','nyx','jinx','ozzy','echo','bloop','miko','tofu','yuki','pip','juno','koda','remy','sage','zeke','nova','rio','fizz',
     'mochi','pogo','jojo','loki','taco','bean','waffle','pickle','noodle','biscuit','sprocket','gizmo','bonk','zap','ziggy','dino','nugget','cosmo','benny','peaches'];
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
@@ -68,15 +68,19 @@
   }
 
   /* ---------- bot model ----------
-     Calibrated on tests/sim.js (greedy player, 4 clicks/s, STAGE_TAPER 1.6), per completed rebirth R:
-     SIM_H[R] = hours played, SIM_LG[R] = log10(lifetime logs). Past R=29 the sim's stages take 6 h+ each,
-     so the table is extended with stages growing 1.25x longer and logs x2.4 per rebirth. Acorns earned
-     follow the sim too (~2.9 R^2 + 3 R). */
-  const SIM_H  = [0, 0.7, 1.2, 2.1, 3.0, 3.6, 4.0, 4.6, 5.2, 5.6, 6.0, 6.5, 7.2, 7.7, 8.4, 9.3, 10.5, 11.3, 12.4, 14.0,
-                  15.1, 16.7, 19.0, 22.4, 27.2, 30.8, 43.9, 55.3, 72.3, 90];
-  const SIM_LG = [6, 12.91, 13.39, 13.96, 14.39, 14.86, 15.29, 15.71, 16.13, 16.21, 16.37, 16.58, 16.87, 17.22, 17.60, 18.00,
-                  18.41, 18.81, 19.20, 19.56, 19.93, 20.33, 20.74, 21.15, 21.56, 21.97, 22.37, 22.72, 23.09, 23.49, 23.90];
-  (function extend(){ let stage = 18; for (let R = SIM_H.length; R <= 80; R++){ stage *= 1.25; SIM_H.push(SIM_H[R - 1] + stage); } for (let R = SIM_LG.length; R <= 81; R++) SIM_LG.push(SIM_LG[R - 1] + 0.38); })();
+     Calibrated on tests/sim.js (greedy player, 4 clicks/s, current economy incl. the late-game production boost),
+     per completed rebirth R: SIM_H[R] = hours played, SIM_LG[R] = log10(lifetime logs), SIM_AC[R] = acorns earned.
+     The sim covers 60 stages with no stalls; past that the table continues the last 10 stages' trend
+     (about 0.8 h, x2.45 logs and +340 acorns per stage, slowly growing). */
+  const SIM_H = [0,0.65,1.19,2.08,3.02,3.57,4.02,4.58,5.24,5.6,6,6.54,7.24,7.73,8.39,9.28,10.54,11.3,12.41,13.96,15.07,16.4,17.76,19.18,20.63,21.42,22.21,23.02,23.87,24.76,25.21,25.66,26.16,26.63,27.16,27.67,28.21,28.76,29.32,29.88,30.47,31.07,31.69,32.32,32.97,33.62,34.28,34.97,35.65,36.38,37.09,37.82,38.59,39.34,40.12,40.91,41.71,42.53,43.36,44.21,45.05];
+  const SIM_LG = [6,12.91,13.39,13.96,14.39,14.86,15.29,15.71,16.13,16.21,16.37,16.58,16.87,17.22,17.6,18,18.41,18.81,19.2,19.56,19.93,20.33,20.74,21.15,21.56,21.97,22.37,22.72,23.09,23.49,23.9,24.31,24.72,25.14,25.53,25.89,26.26,26.66,27.06,27.48,27.89,28.3,28.69,29.05,29.42,29.82,30.23,30.64,31.05,31.47,31.86,32.21,32.58,32.99,33.39,33.8,34.22,34.63,35.02,35.38,35.75];
+  const SIM_AC = [0,8,20,36,56,82,112,147,190,238,290,347,414,486,564,647,735,828,934,1046,1163,1286,1424,1568,1718,1874,2036,2204,2378,2558,2744,2936,3134,3338,3548,3764,3986,4214,4448,4688,4934,5186,5444,5708,5978,6254,6536,6824,7118,7418,7724,8036,8354,8678,9008,9344,9686,10034,10388,10748,11114];
+  (function extend(){
+    for (let R = SIM_H.length; R <= 400; R++) SIM_H.push(SIM_H[R - 1] + 0.85 * Math.pow(1.004, R - 60));
+    for (let R = SIM_LG.length; R <= 401; R++) SIM_LG.push(SIM_LG[R - 1] + 0.39);
+    for (let R = SIM_AC.length; R <= 401; R++) SIM_AC.push(SIM_AC[R - 1] + 340 + 6 * (R - 60));
+  })();
+  const acornsAt = R => SIM_AC[Math.min(R, SIM_AC.length - 1)];
   // effective hours -> rebirths (fractional: progress through the current stage)
   function rebirthsOf(T){
     if (T <= 0) return 0;
@@ -136,7 +140,7 @@
       wins: Math.floor(H * b.duel),
       logs: Math.floor(heldLogs(b, Rf, tHours)),
       rebirths: R,
-      acorns: Math.floor((2.9 * R * R + 3 * R) * b.acK)
+      acorns: Math.floor(acornsAt(R) * b.acK)
     };
   }
   function at(tick){
@@ -150,7 +154,7 @@
   }
   const nowTick = () => Math.floor(Date.now() / TICK_MS);
 
-  const LB = TCS.leaderboard = { STATS, TICK_MS, TOP, bots: BOTS, at, tick: nowTick, _botStats: botStats, _hoursAt: hoursAt, _rebirthsOf: rebirthsOf, _log10LogsAt: log10LogsAt, EPOCH };
+  const LB = TCS.leaderboard = { STATS, TICK_MS, TOP, bots: BOTS, at, tick: nowTick, _botStats: botStats, _hoursAt: hoursAt, _rebirthsOf: rebirthsOf, _log10LogsAt: log10LogsAt, _acornsAt: acornsAt, EPOCH };
   // every bot name (lower-case), so nobody can sign up as one and friend requests to them look normal
   const BOT_NAMES = {}; BOTS.forEach(b => { BOT_NAMES[b.name.toLowerCase()] = b.name; });
   LB.isBot = name => Object.prototype.hasOwnProperty.call(BOT_NAMES, String(name || '').trim().toLowerCase());

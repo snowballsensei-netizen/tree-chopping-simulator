@@ -205,6 +205,9 @@
     STAGE_HARDNESS: 3.0,            // stage n costs x species mult x STAGE_HARDNESS^n (so later stages take longer)
     STAGE_TAPER_FROM: 2,          // after this many stages, each further stage only costs x STAGE_TAPER more (eases late rebirths)
     STAGE_TAPER: 1.6,
+    STAGE_PROD_FROM: 8,           // late-game catch-up: total income mult = max(acornMult, STAGE_PROD_GROWTH^m / (1 + STAGE_PROD_EASE*m)), m = stage - FROM;
+    STAGE_PROD_GROWTH: 1.6,       // matches STAGE_TAPER so late stages stop getting exponentially longer (linear acorns can't keep up with 1.6^n)
+    STAGE_PROD_EASE: 0.08,        // keeps a gentle upward trend in late stage times
     ACORNS_BASE: 8,               // acorns for clearing a stage: BASE + PER_STAGE*n + EXTRA per maxed upgrade beyond the rule
     ACORNS_PER_STAGE: 4,
     ACORNS_EXTRA_MAXED: 3,

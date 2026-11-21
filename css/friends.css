@@ -127,3 +127,19 @@ body.duel-on #ui-layer > :not(#duel-ov){visibility:hidden !important}
   .dv-win-t{font-size:60px;--stroke:6px}.dv-win-n{font-size:34px}.dv-win-w{font-size:24px}
   .dv-vs span{font-size:36px}.vs-x{font-size:58px}
 }
+
+/* matchmaking (js/matchmaking.js): searching / match-found card, top centre */
+#mm-card{position:absolute;left:50%;top:var(--gap);transform:translateX(-50%);z-index:37;display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:6px 10px 6px 12px;border-radius:14px;border-width:3px;min-width:260px;max-width:calc(100vw - 32px);animation:toastIn .35s cubic-bezier(.2,1.6,.4,1)}
+#mm-card .mm-top{display:flex;align-items:center;gap:8px;font-size:20px;white-space:nowrap}
+#mm-card .mm-spin{width:18px;height:18px;border-radius:50%;border:3px solid rgba(255,255,255,.35);border-top-color:#ffe25a;animation:mmSpin .8s linear infinite;flex:none}
+#mm-card .mm-time{font-variant-numeric:tabular-nums;color:#ffe25a;min-width:38px}
+#mm-card .mm-x{border:none;background:none;color:#fff;font:inherit;font-size:26px;line-height:1;padding:0 2px;cursor:pointer;-webkit-text-stroke:1px #1b1b1b}
+#mm-card .mm-x:hover{color:#e8443a}
+#mm-card .mm-stakes,#mm-card .mm-rec{font-size:16px;white-space:nowrap}
+#mm-card .mm-rec{opacity:.85;font-size:14px}
+#mm-card .gain{color:#ffd23a}
+#mm-card .loss{color:#ff6b5e}
+#mm-card.found .mm-t{color:#7dff6a}
+#mm-card.found .mm-vs b{color:#ffe25a}
+@keyframes mmSpin{to{transform:rotate(360deg)}}

@@ -51,12 +51,12 @@ function runStage() {
   }
   return { t, buys };
 }
-const res = [];
+const res = []; let tmin = 0;
 for (let s = 0; s < STAGES; s++) {
   const name = S.stage().name;
   const r = runStage();
-  const acorns = S.acornsOnRebirth();
-  console.log(`stage ${s + 1} ${name.padEnd(22)} ${(r.t / 60).toFixed(1).padStart(6)} min${r.timeout ? ' (TIMEOUT)' : ''}  buys ${r.buys}  maxed ${S.maxedCount()}/25  acorns +${acorns}  perSec ${S.perSecond().toExponential(2)}`);
+  const acorns = S.acornsOnRebirth(); tmin += r.t / 60;
+  console.log(`stage ${s + 1} ${name.padEnd(22)} ${(r.t / 60).toFixed(1).padStart(6)} min${r.timeout ? ' (TIMEOUT)' : ''}  buys ${r.buys}  maxed ${S.maxedCount()}/25  acorns +${acorns}  perSec ${S.perSecond().toExponential(2)}  life ${S.data.lifetimeWood.toExponential(3)}  tmin ${tmin.toFixed(1)}  acornsE ${S.data.acornsEarned + acorns}`);
   res.push(r.t / 60);
   S.rebirth();
   // spend acorns: cheapest perk first (a reasonable player)

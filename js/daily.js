@@ -45,6 +45,8 @@
     const s = S(), m = s.costMult ? s.costMult() : 1;
     return (D.UPGRADES[0].cost + D.UPGRADES[1].cost) * m;
   }
+  // N minutes of production (with the new-player floor): the same estimate the rewards use (also matchmaking stakes)
+  const minutesOfLogs = min => Math.ceil(Math.max(baseRate() * 60 * min, minPer10() * min / 10));
   function unowned(){
     const d = S().data, all = [].concat(D.COSMETICS.hat, D.COSMETICS.face, D.COSMETICS.boots);
     return all.filter(c => !d.cosmetics[c.id]);
@@ -52,7 +54,7 @@
   function reward(streak){
     const day = cycleDay(streak), min = MINUTES[day - 1];
     const rb = (S().data.stats && S().data.stats.rebirths) || 0, scale = 1 + Math.floor(Math.min(rb, 30) / 10);
-    const logs = Math.ceil(Math.max(baseRate() * 60 * min, minPer10() * min / 10));
+    const logs = minutesOfLogs(min);
     let acorns = ACORNS[day - 1] * scale;
     const cosmetic = day === 7 && unowned().length > 0;
     if (day === 7 && !cosmetic) acorns += 5 * scale;   // every outfit owned: extra acorns instead
@@ -229,7 +231,7 @@
   }, 1000);
 
   TCS.daily = {
-    status, reward, claim, open, close, today, claimUI: doClaim,
+    status, reward, claim, open, close, today, claimUI: doClaim, minutesOfLogs,
     get card(){ return card; }, get btn(){ return ensureBtn(); },
     _setNow(ms){ nowOverride = ms === null || ms === undefined ? null : +ms; refreshBtn(); },
     _dayNum: dayNum

@@ -387,6 +387,203 @@ async function snapshot(page) {
     check('phone: claim + reopen shows countdown', await pp.evaluate(() => TCS.state.data.daily.total === 1 && !!document.querySelector('#daily-card .dr-count')));
     await ctxP.close();
     }
+    // ---- quests (3 daily + 2 weekly, progress, claim, rollovers, panel)
+    {
+    const SHOTS = process.env.TCS_SHOTS || '';
+    const ctxQ = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await ctxQ.newPage(); watch(page, errs);
+    const MON = new Date(2026, 10, 23, 12, 0, 0).getTime(), DAY = 864e5;   // a future Monday noon, local time (dates only move forward)
+    await page.goto(base + '?local&guest&nodaily');
+    await page.waitForFunction(() => window.TCS && TCS.ready && TCS.state.loaded && TCS.quests, null, { timeout: 30000 });
+    await page.waitForTimeout(500);
+    const q0 = await page.evaluate(MON => { TCS.quests._setNow(MON); const q = TCS.quests.list(); TCS.state.save();
+      return { day: q.day, week: q.week, d: q.daily.map(x => x.id), w: q.weekly.map(x => x.id), btn: !!document.querySelector('#outfit-btns .quests-btn') }; }, MON);
+    const ids = q0.d.concat(q0.w);
+    check('quests generated: 3 daily + 2 weekly, no duplicates, HUD button', q0.d.length === 3 && q0.w.length === 2 &&
+      new Set(ids).size === 5 && q0.week === '2026-W48' && q0.day === '2026-11-23' && q0.btn, q0);
+    // force a known chop quest so the rest of the test is deterministic
+    await page.evaluate(() => { const q = TCS.quests.list(); q.daily[0] = { id: 'chop', target: 20, progress: 0, claimed: false, done: false };
+      if (q.daily[1].id === 'chop') q.daily[1] = { id: 'play', target: 15, progress: 0, claimed: false, done: false };
+      q.weekly[0] = { id: 'coffee', target: 12, progress: 3, claimed: false, done: false }; TCS.state.save(); });
+    await page.reload();
+    await page.waitForFunction(() => window.TCS && TCS.ready && TCS.state.loaded && TCS.quests, null, { timeout: 30000 });
+    const q1 = await page.evaluate(MON => { TCS.quests._setNow(MON); const q = TCS.quests.list(); return { d: q.daily.map(x => x.id), w: q.weekly.map(x => x.id), wp: q.weekly[0].progress }; }, MON);
+    check('same quests after reload', q1.d[0] === 'chop' && q1.d.slice(1).join() !== '' && q1.w[0] === 'coffee' && q1.wp === 3 && q1.w[1] === q0.w[1], q1);
+    await page.keyboard.press('KeyQ'); await page.waitForTimeout(200);
+    const opened = await page.evaluate(() => ({ p: !!document.getElementById('quests-panel'), rows: document.querySelectorAll('#quests-panel .qs-row').length }));
+    check('Q opens the quest panel (3 daily + chest + 2 weekly rows)', opened.p && opened.rows === 6, opened);
+    for (let i = 0; i < 12; i++) await page.evaluate(() => TCS.state.chop('click'));
+    await page.waitForTimeout(1100);
+    if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'quests_desktop_progress.png') });
+    const mid = await page.evaluate(() => ({ p: TCS.quests.list().daily[0].progress, dot: TCS.quests.btn.classList.contains('dot'), toasts: document.querySelectorAll('#toasts .toast').length }));
+    check('chopping advances the chop quest', mid.p === 12 && !mid.dot, mid);
+    for (let i = 0; i < 10; i++) await page.evaluate(() => TCS.state.chop('click'));
+    await page.waitForTimeout(400);
+    const comp = await page.evaluate(() => ({ q: TCS.quests.list().daily[0], dot: TCS.quests.btn.classList.contains('dot'),
+      toast: [...document.querySelectorAll('#toasts .toast')].some(t => /Quest complete/.test(t.textContent)), ready: !!document.querySelector('#quests-panel .qs-row.ready[data-kind=daily][data-i="0"] .qs-claim') }));
+    check('completing a quest: toast + red dot + CLAIM row', comp.q.progress === 20 && comp.q.done && comp.dot && comp.toast && comp.ready, comp);
+    if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'quests_desktop_complete.png') });
+    const before = await page.evaluate(() => { const d = TCS.state.data; return { a: d.acorns, ae: d.acornsEarned, w: d.wood, exp: TCS.quests.reward('daily', TCS.quests.list().daily[0]) }; });
+    await page.click('#quests-panel .qs-row.ready[data-kind=daily][data-i="0"]');
+    await page.waitForTimeout(300);
+    const after = await page.evaluate(() => { const d = TCS.state.data; return { a: d.acorns, ae: d.acornsEarned, w: d.wood, claimed: TCS.quests.list().daily[0].claimed,
+      again: TCS.quests.claim('daily', 0), dot: TCS.quests.btn.classList.contains('dot'), row: !!document.querySelector('#quests-panel .qs-row.claimed[data-kind=daily][data-i="0"]'),
+      stored: TCS.store.getJSON(TCS.state.key('guest', 0)).quests.daily[0].claimed }; });
+    check('claim grants acorns (+acornsEarned) and logs once', after.claimed && after.a - before.a === before.exp.acorns && after.ae - before.ae === before.exp.acorns &&
+      before.exp.acorns >= 1 && after.w - before.w >= before.exp.logs * 0.999 && after.stored, { before, after });
+    check('cannot claim twice; row checked, dot cleared', after.again === null && after.row && !after.dot, after);
+    if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'quests_desktop_claimed.png') });
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    check('Esc closes the quest panel (settings stay closed)', await page.evaluate(() => !document.getElementById('quests-panel') && document.getElementById('shop').dataset.panel !== 'settings'));
+    const roll = await page.evaluate(([MON, DAY]) => { const Q = TCS.quests;
+      Q._setNow(MON - DAY); const back = Q.list(); const backDay = back.day, backClaimed = back.daily[0].claimed;
+      Q._setNow(MON + DAY); const q = Q.list();
+      const r = { backDay, backClaimed, day: q.day, d: q.daily.map(x => x.id + ':' + x.progress + ':' + x.claimed), w: q.weekly.map(x => x.id + ':' + x.progress), week: q.week };
+      Q._setNow(MON + 7 * DAY); const q2 = Q.list(); r.week2 = q2.week; r.w2 = q2.weekly.map(x => x.id + ':' + x.progress); r.day2 = q2.day; return r; }, [MON, DAY]);
+    check('clock set backwards keeps the claimed set', roll.backDay === '2026-11-23' && roll.backClaimed, roll);
+    check('day rollover: new dailies, weekly progress kept', roll.day === '2026-11-24' && roll.d.every(s => /:0:false$/.test(s) || /^hoard:\d+:false$/.test(s)) && roll.w[0] === 'coffee:3' && roll.week === '2026-W48', roll);
+    check('week rollover (Monday) resets weeklies', roll.week2 === '2026-W49' && roll.day2 === '2026-11-30' && roll.w2.every(s => /:0$/.test(s)), roll);
+    await page.evaluate(() => TCS.quests._setNow(null));
+    await ctxQ.close();
+    // phone layout
+    const ctxP = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+    const pp = await ctxP.newPage(); watch(pp, errs);
+    await pp.goto(base + '?local&guest&nodaily');
+    await pp.waitForFunction(() => window.TCS && TCS.ready && TCS.state.loaded && TCS.quests, null, { timeout: 30000 });
+    await pp.waitForTimeout(500);
+    await pp.evaluate(() => { const q = TCS.quests.list(); q.daily[0] = { id: 'chop', target: 20, progress: 20, claimed: false, done: true };
+      q.daily[1].progress = Math.floor(q.daily[1].target / 2); TCS.quests.tick(); });
+    await pp.tap('.quests-btn', { force: true }); await pp.waitForTimeout(400);
+    const pf = await pp.evaluate(() => { const r = document.getElementById('quests-panel').getBoundingClientRect(), b = document.getElementById('outfit-btns').getBoundingClientRect();
+      const sh = document.getElementById('shop').getBoundingClientRect(), btns = [...document.querySelectorAll('#outfit-btns .outfit-btn')].map(e => e.getBoundingClientRect());
+      return { l: r.left, r: r.right, t: r.top, bot: r.bottom, w: innerWidth, btnTop: b.top, shopTop: sh.top, btnsIn: btns.every(x => x.right <= innerWidth && x.left >= 0),
+        rowsOverflow: [...document.querySelectorAll('#quests-panel .qs-row')].some(e => e.scrollWidth > e.clientWidth + 1) }; });
+    check('phone: quest panel fits above the buttons + shop sheet, buttons on screen', pf.l >= 0 && pf.r <= pf.w && pf.t >= 0 && pf.bot <= pf.btnTop && pf.bot <= pf.shopTop && pf.btnsIn && !pf.rowsOverflow, pf);
+    if (SHOTS) await pp.screenshot({ path: path.join(SHOTS, 'quests_phone_complete.png') });
+    await pp.tap('#quests-panel .qs-row.ready[data-kind=daily]', { force: true }); await pp.waitForTimeout(400);
+    if (SHOTS) await pp.screenshot({ path: path.join(SHOTS, 'quests_phone_claimed.png') });
+    check('phone: tap claims', await pp.evaluate(() => TCS.quests.list().daily[0].claimed));
+    await ctxP.close();
+    }
+    // ---- matchmaking: queue -> searching card -> match found -> duel vs a bot (no Firestore), stakes, streak CPS, cancel, leave = loss
+    {
+    const SHOTS = process.env.TCS_SHOTS || '';
+    const ctxM = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const mp = await ctxM.newPage(); watch(mp, errs);
+    await mp.goto(base + '?local&nodaily');   // title menu: no matchmaking
+    await mp.waitForFunction(() => window.TCS && TCS.ready && TCS.mm, null, { timeout: 30000 });
+    await mp.waitForTimeout(400);
+    await mp.keyboard.press('KeyM'); await mp.waitForTimeout(200);
+    check('matchmaking unavailable on the title menu', await mp.evaluate(() => !TCS.mm.available() && TCS.mm.find() === false && TCS.mm.state === 'idle' && !document.getElementById('mm-card')));
+    await mp.goto(base + '?local&guest&nodaily');
+    await mp.waitForFunction(() => window.TCS && TCS.ready && TCS.state.loaded && TCS.mm, null, { timeout: 30000 });
+    await mp.waitForTimeout(600);
+    const pool = await mp.evaluate(() => { const b = TCS.mm.bots, low = b.map(x => x.name.toLowerCase()), ids = TCS.data.cosmeticById;
+      return { n: b.length, uniq: new Set(low).size, re: b.every(x => /^[A-Za-z0-9_]{4,16}$/.test(x.name)), lb: b.filter(x => TCS.leaderboard.isBot(x.name)).length,
+        looks: b.every(x => x.stage >= 0 && x.stage <= 7 && x.cos.split('|').length === 3 && x.cos.split('|').every(c => !c || ids[c])), stages: new Set(b.map(x => x.stage)).size,
+        isBot: TCS.mmBots.isBot(b[7].name.toUpperCase()) && !TCS.mmBots.isBot('nobody_here_x'), taken: TCS.accounts.validateUsername(b[3].name), btn: !!document.querySelector('#outfit-btns .mm-btn') }; });
+    check('300 matchmaking bots: unique, valid names, distinct from leaderboard bots, real cosmetics, names taken for sign-up, button in #outfit-btns',
+      pool.n === 300 && pool.uniq === 300 && pool.re && pool.lb === 0 && pool.looks && pool.stages === 8 && pool.isBot && pool.taken === 'Username taken' && pool.btn, pool);
+    const cps = await mp.evaluate(() => ({ m5: TCS.mm.cpsFor(-5), z: TCS.mm.cpsFor(0), p8: TCS.mm.cpsFor(8), lo: TCS.mm.cpsFor(-99), hi: TCS.mm.cpsFor(99), m2: TCS.mm.cpsFor(-2), p5: TCS.mm.cpsFor(5), p6: TCS.mm.cpsFor(6) }));
+    check('bot CPS tiers: streak -5 in 10-18, 0 in 19-26, +8 in 27-40 (clamped 10..40)', cps.m5 >= 10 && cps.m5 <= 18 && cps.z >= 19 && cps.z <= 26 && cps.p8 >= 27 && cps.p8 <= 40 &&
+      cps.lo === 10 && cps.hi === 40 && cps.m2 === 18 && cps.p5 === 26 && cps.p6 === 27, cps);
+    // real queue (3-9 s) via the M key
+    await mp.evaluate(() => { TCS.state.data.wood = 1e6; window.__mmEv = 0; TCS.bus.on('duelResult', () => window.__mmEv++); });
+    await mp.keyboard.press('KeyM'); await mp.waitForTimeout(1300);
+    const sc = await mp.evaluate(() => { const c = document.getElementById('mm-card'); return { st: TCS.mm.state, txt: c && c.textContent, spin: !!(c && c.querySelector('.mm-spin')), x: !!(c && c.querySelector('.mm-x')) }; });
+    check('M opens the searching card (spinner, timer, ×, stakes, record)', sc.st === 'searching' && /Searching for opponent/.test(sc.txt) && /0:01/.test(sc.txt) && /Win \+.*Lose −/.test(sc.txt) && /Record 0–0 · Streak/.test(sc.txt) && sc.spin && sc.x, sc);
+    if (SHOTS) await mp.screenshot({ path: path.join(SHOTS, 'mm_desktop_searching.png') });
+    const t0 = Date.now();
+    await mp.waitForFunction(() => TCS.mm.state === 'found' || TCS.mm.state === 'live', null, { timeout: 10000 }).catch(() => {});
+    const fnd = await mp.evaluate(() => TCS.mm.state);
+    check('match found within 10 s', fnd === 'found' || fnd === 'live', { fnd, ms: Date.now() - t0 + 1300 });
+    await mp.waitForFunction(() => TCS.mm.state === 'live', null, { timeout: 5000 }).catch(() => {});
+    await mp.waitForTimeout(500);
+    const vs = await mp.evaluate(() => ({ a: (document.querySelector('#duel-ov .vs-a') || {}).textContent, b: (document.querySelector('#duel-ov .vs-b') || {}).textContent, bot: TCS.mm.live && TCS.mm.live.bot.name,
+      cps: TCS.mm.live && TCS.mm.live.cps, d3: TCS.duel3d.active, duel: TCS.duel, marker: !!TCS.state.data.mm.live, intro: document.getElementById('duel-ov').classList.contains('intro') }));
+    check('VS intro shows both names, both vignettes, in-progress marker, bot CPS from streak 0 (+-1.5)', vs.a === 'You' && vs.b === vs.bot && !!vs.bot && vs.d3 && vs.duel && vs.marker && vs.cps >= 18.7 && vs.cps <= 21.7, vs);
+    if (SHOTS) await mp.screenshot({ path: path.join(SHOTS, 'mm_desktop_vs.png') });
+    // Esc does nothing mid-match; this natural-speed bot wins (player idle) -> lose 15 min (cap 50%)
+    await mp.keyboard.press('Escape');
+    await mp.waitForTimeout(5500);
+    const mid = await mp.evaluate(() => ({ live: TCS.mm.state === 'live', opp: TCS.mm.live && TCS.mm.live.opp, panel: document.getElementById('shop').dataset.panel }));
+    check('Esc ignored mid-match; bot chopping at its pace', mid.live && mid.opp > 10 && mid.panel !== 'settings', mid);
+    if (SHOTS) await mp.screenshot({ path: path.join(SHOTS, 'mm_desktop_mid.png') });
+    const exp1 = await mp.evaluate(() => ({ w: TCS.state.data.wood, lose: Math.min(TCS.daily.minutesOfLogs(15), Math.floor(TCS.state.data.wood * 0.5)) }));
+    await mp.waitForFunction(() => TCS.mm.live && TCS.mm.live.result, null, { timeout: 20000 }).catch(() => {});
+    const r1 = await mp.evaluate(() => { const L = TCS.mm.live; return { res: L && L.result, opp: L && L.opp, el: performance.now() - (L ? L.goAt : 0), wood: TCS.state.data.wood, mm: Object.assign({}, TCS.state.data.mm), ev: window.__mmEv }; });
+    check('bot at ~20 CPS finishes 250 chops in ~10-15 s; loss = 15 min of production, streak -1', r1.res && !r1.res.won && r1.res.amount === exp1.lose && r1.opp === 250 && r1.el > 9500 && r1.el < 16000 &&
+      Math.abs(exp1.w - r1.wood - exp1.lose) < 1e-6 * exp1.w + 1 && r1.mm.losses === 1 && r1.mm.streak === -1 && !r1.mm.live && r1.ev === 1, { exp1, r1 });
+    await mp.waitForTimeout(2000);
+    if (SHOTS) await mp.screenshot({ path: path.join(SHOTS, 'mm_desktop_lose.png') });
+    await mp.waitForFunction(() => TCS.mm.state === 'idle' && !TCS.duel, null, { timeout: 6000 }).catch(() => {});
+    // cancel during search costs nothing (Esc, the × and M again)
+    const c0 = await mp.evaluate(() => ({ w: TCS.state.data.wood, mm: JSON.stringify(TCS.state.data.mm), dw: TCS.state.data.duelWins }));
+    await mp.keyboard.press('KeyM'); await mp.waitForTimeout(400); await mp.keyboard.press('Escape'); await mp.waitForTimeout(300);
+    const c1 = await mp.evaluate(() => ({ st: TCS.mm.state, card: !!document.getElementById('mm-card'), panel: document.getElementById('shop').dataset.panel }));
+    await mp.click('#outfit-btns .mm-btn'); await mp.waitForTimeout(300);
+    const c2 = await mp.evaluate(() => TCS.mm.state);
+    await mp.click('#mm-card .mm-x'); await mp.waitForTimeout(300);
+    await mp.keyboard.press('KeyM'); await mp.waitForTimeout(300); const c3 = await mp.evaluate(() => TCS.mm.state);
+    await mp.keyboard.press('KeyM'); await mp.waitForTimeout(9500);
+    const c4 = await mp.evaluate(() => ({ st: TCS.mm.state, w: TCS.state.data.wood, mm: JSON.stringify(TCS.state.data.mm), dw: TCS.state.data.duelWins, ev: window.__mmEv }));
+    check('cancel during search (Esc, ×, M again) costs nothing; button + M open it', c1.st === 'idle' && !c1.card && c1.panel !== 'settings' && c2 === 'searching' && c3 === 'searching' &&
+      c4.st === 'idle' && c4.w >= c0.w && c4.mm === c0.mm && c4.dw === c0.dw && c4.ev === 1, { c0, c1, c2, c3, c4 });
+    // a won match (slow test bot, auto-clicking player at the DUEL_MAX_CPS cap): +45 min, duelWins+1, streak +1, exactly once
+    await mp.evaluate(() => { TCS.mm._test.cps = 1; TCS.mm._test.searchMs = 300; TCS.state.data.wood = 10; });
+    const w0 = await mp.evaluate(() => ({ w: TCS.state.data.wood, win: TCS.daily.minutesOfLogs(45), dw: TCS.state.data.duelWins }));
+    await mp.evaluate(() => { TCS.mm.find(); window.__mmClick = setInterval(() => TCS.mm.chop(), 25); });
+    await mp.waitForFunction(() => TCS.mm.live && TCS.mm.live.result, null, { timeout: 30000 }).catch(() => {});
+    await mp.evaluate(() => clearInterval(window.__mmClick));
+    const w1 = await mp.evaluate(() => { const L = TCS.mm.live; return { res: L && L.result, mine: L && L.mine, el: performance.now() - (L ? L.goAt : 0), wood: TCS.state.data.wood, dw: TCS.state.data.duelWins, mm: Object.assign({}, TCS.state.data.mm), ev: window.__mmEv }; });
+    await mp.waitForTimeout(2000);
+    const out = await mp.evaluate(() => { const w = document.querySelector('#duel-ov .dv-win-w'); return { t: w && w.textContent, gain: !!(w && w.classList.contains('gain')), n: (document.querySelector('#duel-ov .dv-win-n') || {}).textContent }; });
+    if (SHOTS) await mp.screenshot({ path: path.join(SHOTS, 'mm_desktop_win.png') });
+    await mp.waitForFunction(() => TCS.mm.state === 'idle', null, { timeout: 6000 }).catch(() => {});
+    const w2 = await mp.evaluate(() => ({ dw: TCS.state.data.duelWins, mm: TCS.state.data.mm, ev: window.__mmEv, stored: TCS.store.getJSON(TCS.state.key('guest', 0)).mm }));
+    const winTxt = await mp.evaluate(n => '+' + TCS.util.fmt(n) + ' logs', w0.win);
+    check('won match: +45 min of logs (gold +X on the outro), duelWins+1, streak +1, duelResult once', !!w1.res && w1.res.won && w1.res.amount === w0.win && w1.mine === 250 && w1.el >= 12000 &&
+      Math.abs(w1.wood - w0.w - w0.win) < 1e-6 * w0.win + 1 && w1.dw === w0.dw + 1 && w1.mm.streak === 1 && w1.mm.wins === 1 && w1.ev === 2 &&
+      out.gain && out.t === winTxt && out.n === 'You' &&
+      w2.dw === w0.dw + 1 && w2.ev === 2 && w2.mm.wins === 1 && w2.stored.wins === 1 && w2.stored.losses === 1 && w2.stored.streak === 1 && !w2.stored.live, { w0, w1, out, w2 });
+    // lost match capped at 50% of held logs (fast test bot)
+    await mp.evaluate(() => { TCS.mm._test.cps = 40; TCS.state.data.wood = 9; TCS.mm.find(); });
+    await mp.waitForFunction(() => TCS.mm.live && TCS.mm.live.result, null, { timeout: 20000 }).catch(() => {});
+    const l1 = await mp.evaluate(() => ({ res: TCS.mm.live && TCS.mm.live.result, wood: TCS.state.data.wood, mm: Object.assign({}, TCS.state.data.mm) }));
+    check('lost match: loss capped at 50% of held logs, never below 0, streak resets to -1', !!l1.res && !l1.res.won && l1.res.amount === 4 && l1.wood >= 5 && l1.wood < 6 && l1.mm.streak === -1 && l1.mm.losses === 2, l1);
+    await mp.waitForFunction(() => TCS.mm.state === 'idle', null, { timeout: 8000 }).catch(() => {});
+    // closing the tab mid-match = a loss on the next load
+    await mp.evaluate(() => { TCS.mm._test.cps = 1; TCS.state.data.wood = 1000; TCS.mm.find(); });
+    await mp.waitForFunction(() => TCS.mm.state === 'live', null, { timeout: 5000 }).catch(() => {});
+    const lv = await mp.evaluate(() => ({ marker: !!TCS.store.getJSON(TCS.state.key('guest', 0)).mm.live }));
+    await mp.reload();
+    await mp.waitForFunction(() => window.TCS && TCS.ready && TCS.state.loaded && TCS.mm, null, { timeout: 30000 });
+    await mp.waitForTimeout(1600);
+    const lv2 = await mp.evaluate(() => ({ mm: TCS.state.data.mm, toast: [...document.querySelectorAll('#toasts .toast')].some(t => /Left a match/.test(t.textContent)), duel: !!TCS.duel }));
+    check('leaving mid-match counts as a loss next load (once)', lv.marker && lv2.mm.losses === 3 && lv2.mm.streak === -2 && !lv2.mm.live && lv2.toast && !lv2.duel, { lv, lv2 });
+    await ctxM.close();
+    if (SHOTS) {   // phone screenshots: searching, VS, mid-match, win + lose outros
+      const ctxP = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+      const pp = await ctxP.newPage(); watch(pp, errs);
+      await pp.goto(base + '?local&guest&nodaily');
+      await pp.waitForFunction(() => window.TCS && TCS.ready && TCS.state.loaded && TCS.mm, null, { timeout: 30000 });
+      await pp.waitForTimeout(600);
+      await pp.evaluate(() => { TCS.state.data.wood = 5e5; TCS.mm._test.searchMs = 2500; TCS.mm._test.cps = 1; TCS.mm.find(); });
+      await pp.waitForTimeout(1200); await pp.screenshot({ path: path.join(SHOTS, 'mm_phone_searching.png') });
+      await pp.waitForFunction(() => TCS.mm.state === 'live', null, { timeout: 8000 }); await pp.waitForTimeout(500);
+      await pp.screenshot({ path: path.join(SHOTS, 'mm_phone_vs.png') });
+      await pp.evaluate(() => { window.__c = setInterval(() => TCS.mm.chop(), 25); });
+      await pp.waitForTimeout(9000); await pp.screenshot({ path: path.join(SHOTS, 'mm_phone_mid.png') });
+      await pp.waitForFunction(() => TCS.mm.live && TCS.mm.live.result, null, { timeout: 20000 }); await pp.waitForTimeout(2000);
+      await pp.screenshot({ path: path.join(SHOTS, 'mm_phone_win.png') });
+      await pp.evaluate(() => clearInterval(window.__c));
+      await pp.waitForFunction(() => TCS.mm.state === 'idle', null, { timeout: 8000 });
+      await pp.evaluate(() => { TCS.mm._test.searchMs = 200; TCS.mm._test.cps = 40; TCS.mm.find(); });
+      await pp.waitForFunction(() => TCS.mm.live && TCS.mm.live.result, null, { timeout: 20000 }); await pp.waitForTimeout(2000);
+      await pp.screenshot({ path: path.join(SHOTS, 'mm_phone_lose.png') });
+      await ctxP.close();
+    }
+    }
     check('no console errors (http)', errs.length === 0, errs.slice(0, 5));
     await ctx.close();
 

@@ -1,0 +1,38 @@
+/* quests.css — quests button + panel (js/quests.js) */
+.quests-btn{position:relative}
+.quests-btn .qs-dot{position:absolute;right:-2px;top:-2px;width:14px;height:14px;border-radius:50%;background:#ff4a3d;border:3px solid var(--ink);display:none}
+.quests-btn.dot .qs-dot{display:block}
+.quests-btn.dot svg{animation:drWiggle 2.4s ease-in-out infinite}
+
+#quests-panel{position:absolute;left:var(--gap);bottom:calc(var(--gap) + var(--ib) + 14px);width:330px;max-height:min(470px,calc(100vh - var(--ib) - 60px));
+  overflow-y:auto;display:flex;flex-direction:column;padding:8px;gap:4px;border-radius:14px;border-width:3px;z-index:35;pointer-events:auto;
+  animation:qsPop .25s cubic-bezier(.3,1.5,.6,1)}
+@keyframes qsPop{0%{transform:scale(.85);opacity:0}100%{transform:none;opacity:1}}
+.qs-head{display:flex;align-items:baseline;justify-content:space-between;padding:2px 4px 0}
+.qs-h{font-size:20px;line-height:1}
+.qs-reset{font-size:13px;color:#777}
+.qs-row{display:flex;align-items:center;gap:6px;padding:4px 5px;border-radius:10px;background:#f6f6f6;border:2px solid transparent;color:var(--ink)}
+.qs-row.ready{background:#fff3c4;border-color:#ffc83a;box-shadow:0 0 10px 2px rgba(255,200,58,.8);cursor:pointer;animation:qsGlow 1.2s ease-in-out infinite}
+.qs-row.claimed{opacity:.5}
+.qs-row.chest{background:#f2ead9}
+.qs-row.chest.ready{background:#fff3c4}
+.qs-ic{flex:0 0 30px;width:30px;height:30px;display:grid;place-items:center}
+.qs-ic svg{width:100%;height:100%}
+.qs-mid{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.qs-txt{font-size:15px;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qs-bar{position:relative;height:15px;border:2px solid var(--ink);border-radius:8px;background:#fff;overflow:hidden}
+.qs-bar b{position:absolute;left:0;top:0;bottom:0;background:var(--green,#6fd043)}
+.qs-bar em{position:absolute;inset:0;font-style:normal;font-size:11px;line-height:11px;text-align:center;color:var(--ink)}
+.qs-end{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.qs-chips{display:flex;gap:3px}
+.qs-chip{display:inline-flex;align-items:center;gap:1px;font-size:12px;line-height:1}
+.qs-chip i{width:15px;height:15px;display:inline-grid}
+.qs-chip svg{width:15px;height:15px}
+.qs-claim{font-family:var(--font);font-size:14px;line-height:1;padding:3px 8px;border:2px solid var(--ink);border-radius:8px;background:#6fd043;color:#fff;
+  -webkit-text-stroke:1.5px var(--ink);paint-order:stroke fill;box-shadow:0 2px 0 var(--ink)}
+@keyframes qsGlow{0%,100%{box-shadow:0 0 6px 1px rgba(255,200,58,.6)}50%{box-shadow:0 0 14px 4px rgba(255,200,58,.95)}}
+
+@media (max-width:599px){
+  #quests-panel{bottom:calc(var(--sheet) + var(--gap) * 2 + var(--ib) * 2 + 12px);width:min(340px,calc(100vw - 16px));
+    max-height:calc(100vh - var(--sheet) - var(--ib) * 2 - 40px)}
+}

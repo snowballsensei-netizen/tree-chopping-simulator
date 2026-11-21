@@ -218,7 +218,7 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
       return out;
     }, uidZ);
     check('rules: leaderboard rejects other uid / wrong name / negatives / wins jump / extra keys / delete', ['other', 'wrongName', 'negative', 'negLogs', 'winsJump', 'extraKey', 'delete'].every(k => lbRules[k] === 'permission-denied') && lbRules.own === 'allowed', lbRules);
-    await B.page.evaluate(() => { TCS.state.data.wood = 1e40; TCS.state.save(); return TCS.leaderboard.push(true); });
+    await B.page.evaluate(() => { TCS.state.data.wood = 1e100; /* well above any bot (top bots hold ~1e41) */ TCS.state.save(); return TCS.leaderboard.push(true); });
     await B.page.evaluate(() => { TCS.menu.switchProfile(); TCS.leaderboard.select('logs'); });
     const meRow = await B.page.waitForFunction(() => { const r = document.querySelector('.lb-card .lb-row.me'); return r && r.dataset.rank === '1' && r.querySelector('.lb-name').textContent === TCS.cloud.username && document.querySelectorAll('.lb-card .lb-row').length === 50; }, null, { timeout: 15000 }).then(() => true, () => false);
     check('big player tops the merged logs board, own row highlighted', meRow);

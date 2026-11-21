@@ -3,8 +3,10 @@
    API: TCS.patchnotes.show() (force open), .VERSION */
 (function(){
   const TCS = window.TCS, KEY = 'tcs_patch_seen';
-  const VERSION = '2026-11-21';
+  const VERSION = '2026-11-21c';
   const NOTES = [
+    ['🎯', 'Matchmaking', 'Queue up and duel 300 rival lumberjacks — win big, lose some'],
+    ['📜', 'Quests', 'Daily and weekly quests with acorn rewards — press Q'],
     ['🎁', 'Daily rewards', 'Log in every day for a bigger reward — day 7 is huge'],
     ['🥇', 'Leaderboards', 'See the top 50 lumberjacks on the title screen'],
     ['🏆', 'Duel finale', 'Ready, Set, GO!, battle music while you duel, and a victory celebration for the winner'],
