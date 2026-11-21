@@ -61,6 +61,40 @@ async function snapshot(page) {
     await page.waitForFunction(() => window.TCS && TCS.ready, null, { timeout: 30000 });
     await page.waitForTimeout(600);
 
+    // ---- leaderboards on the title menu (?local: bots only)
+    {
+      await page.waitForSelector('.lb-card .lb-row', { timeout: 10000 });
+      const lb = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('.lb-card .lb-row')], vals = TCS.leaderboard.board().rows.map(r => r.value);
+        const c = document.querySelector('.lb-card'), cr = c.getBoundingClientRect(), col = document.querySelector('.menu-col').getBoundingClientRect(), pill = document.querySelector('.menu-online').getBoundingClientRect();
+        return { vis: getComputedStyle(c).display !== 'none' && cr.width > 0, tabs: c.querySelectorAll('.lb-tab').length, rows: rows.length,
+          sorted: vals.every((v, i) => i === 0 || vals[i - 1] >= v), overlap: cr.left < col.right || cr.top < pill.bottom };
+      });
+      check('leaderboard on the menu: 4 tabs, 50 rows, sorted, clear of the menu + pill', lb.vis && lb.tabs === 4 && lb.rows === 50 && lb.sorted && !lb.overlap, lb);
+      await page.click('.lb-tab[data-stat=rebirths]');
+      await page.waitForTimeout(300);
+      const sw = await page.evaluate(() => ({ stat: TCS.leaderboard.board().stat, title: document.querySelector('.lb-title').textContent, rows: document.querySelectorAll('.lb-card .lb-row').length, saved: localStorage.getItem('tcs_lb_tab') }));
+      check('leaderboard tab switch (remembered)', sw.stat === 'rebirths' && /rebirths/i.test(sw.title) && sw.rows === 50 && sw.saved === 'rebirths', sw);
+      const p2 = await ctx.newPage();
+      await p2.goto(base + '?local'); await p2.waitForFunction(() => window.TCS && TCS.ready, null, { timeout: 30000 });
+      const tk = await page.evaluate(() => TCS.leaderboard.tick());
+      const sig = pg => pg.evaluate(t => JSON.stringify(TCS.leaderboard.at(t)), tk);
+      const [s1, s2] = [await sig(page), await sig(p2)];
+      const shown2 = await p2.evaluate(() => TCS.leaderboard.board() && TCS.leaderboard.board().stat);
+      await p2.close();
+      check('bot boards identical in two pages (deterministic)', s1 === s2 && s1.length > 1000 && shown2 === 'rebirths', { len: s1.length, shown2 });
+      const mono = await page.evaluate(t => {
+        const L = TCS.leaderboard, a = L.at(t), later = [L.at(t + 1), L.at(t + 120), L.at(t + 2880 * 7)];
+        let bad = 0, moved = 0;
+        for (const st of L.STATS) for (const r of a[st]) for (const b of later) {
+          const x = L._botStats(L.bots[+r.id.slice(1)], ((t + 1) * L.TICK_MS - L.EPOCH) / 3600000); if (!x || x[st] < r.value) bad++;
+          const f = b[st].find(q => q.id === r.id); if (f && f.value < r.value) bad++; if (!f) moved++;
+        }
+        return { bad, moved, logs1: a.logs[0].value, logs50: a.logs[49].value };
+      }, tk);
+      check('bot values never decrease over later ticks', mono.bad === 0, mono);
+    }
+
     // ---- create account through the real menu
     const user = 'e2e_' + Date.now().toString(36).slice(-6), pass = 'pine1234';
     await page.click('[data-act=create]');
@@ -78,6 +112,7 @@ async function snapshot(page) {
     // ---- new profile
     await page.click('.slot[data-slot="0"][data-act=new]');
     await page.waitForFunction(() => TCS.state.loaded && TCS.scene.mode === 'play', null, { timeout: 10000 });
+    check('leaderboard hidden in game', await page.evaluate(() => { const c = document.querySelector('.lb-card'); return !c || c.getBoundingClientRect().width === 0; }));
     await page.waitForTimeout(700);
     check('profile created and game started', true);
 

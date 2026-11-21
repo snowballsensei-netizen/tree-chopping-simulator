@@ -183,6 +183,44 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     }, uidZ);
     check('rules deny non-admin access', ['readOther', 'groupQuery', 'grant', 'grantAcorns', 'takeFromOther', 'claimName', 'writeOther'].every(k => denied[k] === 'permission-denied') && denied.readOwn === 'allowed', denied);
 
+    // ---- leaderboard: own doc, rules, unauthenticated read, a big player shows (highlighted) on the merged menu board
+    const lbW = await B.page.evaluate(async () => {
+      const ok = await TCS.leaderboard.push(true), F = TCS.fb.F, db = F.getFirestore(TCS.fb.app);
+      const d = (await F.getDoc(F.doc(db, 'leaderboard', TCS.cloud.uid))).data(), s = TCS.state.data;
+      return { ok, d: { username: d.username, wins: d.wins, logs: d.logs, rebirths: d.rebirths, acorns: d.acorns }, lt: s.lifetimeWood, r: s.stats.rebirths, ae: s.acornsEarned, me: TCS.cloud.username };
+    });
+    check('leaderboard doc written with the player values', lbW.ok && lbW.d.username === lbW.me && lbW.d.logs > 0 && lbW.d.logs <= lbW.lt && lbW.d.logs >= lbW.lt * 0.9
+      && lbW.d.rebirths === lbW.r && lbW.d.acorns === lbW.ae && lbW.d.wins === 0, lbW);
+    const lbRules = await B.page.evaluate(async uidZ => {
+      const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app), out = {}, me = TCS.cloud.uid, u = TCS.cloud.username;
+      const doc = o => Object.assign({ username: u, wins: 0, logs: 1, rebirths: 0, acorns: 0, at: F.serverTimestamp() }, o);
+      const t = async (k, fn) => { try { await fn(); out[k] = 'allowed'; } catch (e) { out[k] = e.code || e.message; } };
+      await t('other', () => F.setDoc(F.doc(db, 'leaderboard', uidZ), doc({})));
+      await t('wrongName', () => F.setDoc(F.doc(db, 'leaderboard', me), doc({ username: 'someoneelse' })));
+      await t('negative', () => F.setDoc(F.doc(db, 'leaderboard', me), doc({ acorns: -1 })));
+      await t('negLogs', () => F.setDoc(F.doc(db, 'leaderboard', me), doc({ logs: -5 })));
+      await t('winsJump', () => F.setDoc(F.doc(db, 'leaderboard', me), doc({ wins: 500 })));
+      await t('extraKey', () => F.setDoc(F.doc(db, 'leaderboard', me), doc({ x: 1 })));
+      await t('delete', () => F.deleteDoc(F.doc(db, 'leaderboard', me)));
+      await t('own', () => TCS.leaderboard.push(true).then(ok => { if (!ok) throw new Error('push failed'); }));
+      return out;
+    }, uidZ);
+    check('rules: leaderboard rejects other uid / wrong name / negatives / wins jump / extra keys / delete', ['other', 'wrongName', 'negative', 'negLogs', 'winsJump', 'extraKey', 'delete'].every(k => lbRules[k] === 'permission-denied') && lbRules.own === 'allowed', lbRules);
+    await B.page.evaluate(() => { TCS.state.data.lifetimeWood = 1e40; TCS.state.save(); return TCS.leaderboard.push(true); });
+    await B.page.evaluate(() => { TCS.menu.switchProfile(); TCS.leaderboard.select('logs'); });
+    const meRow = await B.page.waitForFunction(() => { const r = document.querySelector('.lb-card .lb-row.me'); return r && r.dataset.rank === '1' && r.querySelector('.lb-name').textContent === TCS.cloud.username && document.querySelectorAll('.lb-card .lb-row').length === 50; }, null, { timeout: 15000 }).then(() => true, () => false);
+    check('big player tops the merged logs board, own row highlighted', meRow);
+    const V = await device();
+    const anon = await V.page.evaluate(async () => {
+      const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app);
+      let n = -1; try { n = (await F.getDocs(F.query(F.collection(db, 'leaderboard'), F.orderBy('logs', 'desc'), F.limit(50)))).size; } catch (e) { n = e.code; }
+      TCS.leaderboard.select('logs');
+      return { n, uid: TCS.cloud.uid };
+    });
+    const seen = await V.page.waitForFunction(u => { const r = document.querySelector('.lb-card .lb-row[data-rank="1"]'); return r && r.querySelector('.lb-name').textContent === u && !r.classList.contains('me'); }, lbW.me, { timeout: 15000 }).then(() => true, () => false);
+    check('unauthenticated leaderboard read + real player merged into the board', anon.n >= 1 && !anon.uid && seen, { anon, seen });
+    await V.ctx.close();
+
     // ---- stays logged in across reload; rename + delete hit the cloud
     await B.page.evaluate(() => TCS.menu.switchProfile());
     await B.page.reload();
@@ -357,7 +395,7 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     await Promise.all([P, Q].map(X => X.page.waitForSelector('.dv-outro', { timeout: 4000 }).catch(() => {})));   // shown once the falling tree lands
     const outroOf = X => X.page.evaluate(() => { const o = document.querySelector('.dv-outro'), w = document.querySelector('.dv-slot.dv-winner');
       return { res: __res, wood: TCS.state.data.wood, name: o && o.querySelector('.dv-win-n').textContent, wager: o && o.querySelector('.dv-win-w').textContent,
-        title: o && o.querySelector('.dv-win-t').textContent, winSlot: w && (w.classList.contains('me') ? 'me' : 'op'), outro3d: !!(TCS.duel3d.sides && (TCS.duel3d.sides.me.role || TCS.duel3d.sides.op.role)) }; });
+        title: o && o.querySelector('.dv-win-t').textContent, dw: TCS.state.data.duelWins, winSlot: w && (w.classList.contains('me') ? 'me' : 'op'), outro3d: !!(TCS.duel3d.sides && (TCS.duel3d.sides.me.role || TCS.duel3d.sides.op.role)) }; });
     const rp = await outroOf(P), rq = await outroOf(Q);
     check('exactly one winner (Q won, P lost)', rp.res.length === 1 && rq.res.length === 1 && rq.res[0].won && !rp.res[0].won, { p: rp.res, q: rq.res });
     check('balances after logs duel', Math.abs(rp.wood - (1e6 - W)) < 1 && Math.abs(rq.wood - (5e5 + W)) < 1, { p: rp.wood, q: rq.wood });
@@ -384,6 +422,9 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     await Q.page.waitForTimeout(2500);
     const wq2 = await Q.page.evaluate(() => { window.__res = []; TCS.bus.on('duelResult', e => __res.push(e)); return TCS.state.data.wood; });
     check('no double payout after reload', Math.abs(wq2 - (5e5 + W)) < 1, wq2);
+    const dwOk = await Q.page.waitForFunction(async () => { const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app); await TCS.leaderboard.push(true);
+      const d = await F.getDoc(F.doc(db, 'leaderboard', TCS.cloud.uid)); return TCS.state.data.duelWins === 1 && d.exists() && d.data().wins === 1; }, null, { timeout: 15000, polling: 1000 }).then(() => true, () => false);
+    check('duel win counted once (save + leaderboard doc, after reload)', rq.dw === 1 && rp.dw === 0 && dwOk, { q: rq.dw, p: rp.dw, dwOk });
 
     // acorn duel: P wins 5 acorns
     const da = await P.page.evaluate(u => TCS.friends.challenge(u, 'acorns', 5), uidQ);
@@ -406,6 +447,8 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     await P.page.waitForFunction(() => __res.length >= 2, null, { timeout: 20000 }).catch(() => {});
     await Q.page.waitForFunction(() => __res.length >= 1, null, { timeout: 20000 }).catch(() => {});
     const ap = await P.page.evaluate(() => ({ a: TCS.state.data.acorns, r: __res[1] })), aq = await Q.page.evaluate(() => ({ a: TCS.state.data.acorns, r: __res[0] }));
+    const dw2 = { p: await P.page.evaluate(() => TCS.state.data.duelWins), q: await Q.page.evaluate(() => TCS.state.data.duelWins) };
+    check('acorn duel win counted for P only', dw2.p === 1 && dw2.q === 1, dw2);
     check('acorn wager: winner +5, loser -5', da.ok && accA.ok && ap.a === 55 && aq.a === 15 && ap.r && ap.r.won && aq.r && !aq.r.won, { da, accA, ap, aq });
     await P.ctx.close(); await Q.ctx.close(); await R.ctx.close();
 

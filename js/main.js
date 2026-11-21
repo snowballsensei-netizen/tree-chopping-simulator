@@ -51,6 +51,7 @@
 
   safe(() => S.startAutosave(), 'autosave');
   safe(() => TCS.menu.init(), 'menu');
+  safe(() => TCS.leaderboard && TCS.leaderboard.init(), 'leaderboard');
   requestAnimationFrame(frame);
   TCS.ready = true;
   bus.emit('ready');

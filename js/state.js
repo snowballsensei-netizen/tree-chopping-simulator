@@ -22,6 +22,7 @@
       wood: 0, runWood: 0, lifetimeWood: 0,
       owned, tech: {},
       acorns: 0, acornsEarned: 0, perks: {},
+      duelWins: 0,                   // duels won (friends.js payout, once per duel; leaderboard)
       speciesIndex: 0, species: 0,   // species = stage index (alias kept in sync with speciesIndex)
       achievements: {}, cosmetics: {}, equipped: { hat: null, face: null, boots: null }, autoselect: true,
       stats: { clicks: 0, chops: 0, height: 0, squirrels: 0, frenzies: 0, rebirths: 0, coffees: 0, playTime: 0, bestPerSecond: 0 },

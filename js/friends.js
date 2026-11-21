@@ -215,6 +215,7 @@
       let delta = d.amount;
       if (d.kind === 'acorns'){ if (won) data.acorns += delta; else { delta = Math.min(delta, data.acorns); data.acorns -= delta; } }
       else { if (won) data.wood += delta; else { delta = Math.min(delta, data.wood); data.wood = Math.max(0, data.wood - delta); } }
+      if (won) data.duelWins = (data.duelWins || 0) + 1;   // inside the once-per-duel guard (leaderboard)
       list.push(d.id); if (list.length > 50) list.splice(0, list.length - 50);
       s.save();
       try { await C.flush(); } catch(e){}

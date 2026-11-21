@@ -121,6 +121,24 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // leaderboard/{uid} = {username, wins, logs, rebirths, acorns, at}: public (the title menu shows it before login),
+    // written only by the owner under their own name. Sanity: whole numbers for wins/rebirths/acorns, rebirths <= 1000,
+    // wins grow by at most 20 per write.
+    match /leaderboard/{uid} {
+      function L() { return request.resource.data; }
+      function okInt(v, cap) { return v is int && v >= 0 && v <= cap; }
+      allow read: if true;
+      allow create, update: if isOwner(uid)
+        && L().keys().hasOnly(['username', 'wins', 'logs', 'rebirths', 'acorns', 'at'])
+        && L().keys().hasAll(['username', 'wins', 'logs', 'rebirths', 'acorns', 'at'])
+        && L().username is string && L().username.size() <= 16 && ownsName(L().username.lower())
+        && okInt(L().wins, 1000000) && okInt(L().rebirths, 1000) && okInt(L().acorns, 100000000)
+        && num(L().logs) && L().logs >= 0
+        && (resource == null || L().wins <= resource.data.wins + 20)
+        && L().at == request.time;
+      allow delete: if false;
+    }
+
     /* ---------- duels ---------- */
     // duels/{id}: a = challenger, b = challenged. status pending -> accepted -> done (or declined / cancelled).
     // pa/pb = chops (only that player writes it, with ta/tb = request.time), winner set once in a transaction,
