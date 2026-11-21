@@ -86,13 +86,16 @@ async function snapshot(page) {
       const mono = await page.evaluate(t => {
         const L = TCS.leaderboard, a = L.at(t), later = [L.at(t + 1), L.at(t + 120), L.at(t + 2880 * 7)];
         let bad = 0, moved = 0;
-        for (const st of L.STATS) for (const r of a[st]) for (const b of later) {
+        // logs = logs held right now (they go up and down); the lifetime stats never decrease
+        for (const st of L.STATS.filter(x => x !== 'logs')) for (const r of a[st]) for (const b of later) {
           const x = L._botStats(L.bots[+r.id.slice(1)], ((t + 1) * L.TICK_MS - L.EPOCH) / 3600000); if (!x || x[st] < r.value) bad++;
           const f = b[st].find(q => q.id === r.id); if (f && f.value < r.value) bad++; if (!f) moved++;
         }
         return { bad, moved, logs1: a.logs[0].value, logs50: a.logs[49].value };
       }, tk);
-      check('bot values never decrease over later ticks', mono.bad === 0, mono);
+      check('bot wins/rebirths/acorns never decrease over later ticks', mono.bad === 0, mono);
+      const held = await page.evaluate(t => { const L = TCS.leaderboard, a = L.at(t).logs, b = L.at(t + 1).logs; return { changed: b.filter(r => { const o = a.find(z => z.id === r.id); return !o || o.value !== r.value; }).length }; }, tk);
+      check('bot logs change every 10 s tick', held.changed >= 40, held);
     }
 
     // ---- create account through the real menu

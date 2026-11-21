@@ -11,7 +11,7 @@
 (function(){
   const TCS = window.TCS = window.TCS || {};
   const bus = TCS.bus;
-  const TICK_MS = 30000, TOP = 50, BOT_N = 190;
+  const TICK_MS = 10000, TOP = 50, BOT_N = 190;
   const STATS = ['wins', 'logs', 'rebirths', 'acorns'];
   const TITLES = { wins: 'Duel Wins', logs: 'Logs', rebirths: 'Rebirths', acorns: 'Acorns' };
   const EPOCH = Date.UTC(2026, 9, 1);   // day 0 of the bot timeline (2026-10-01)
@@ -114,13 +114,27 @@
     const k = Math.min(1, Math.max(0, (tHours - dayAbs * DAY_H - start) / len));
     return base + inc * k;
   }
+  // smooth per-bot noise in [0,1): random points every ~3 min, eased between (so values drift, not jump)
+  function drift(seed, tHours){
+    const x = tHours * 20, i = Math.floor(x), f = x - i, e = f * f * (3 - 2 * f);
+    return h01(seed, i) * (1 - e) + h01(seed, i + 1) * e;
+  }
+  // logs a bot HOLDS right now (the logs board shows current logs, like real players): a share of what it has
+  // earned this stage. It climbs while chopping, drops when it buys upgrades, and starts near 0 after a rebirth.
+  function heldLogs(b, Rf, tHours){
+    const R = Math.min(Math.floor(Rf), SIM_LG.length - 2), k = Rf - R;
+    const slope = SIM_LG[R + 1] - SIM_LG[R];
+    const earnedThisStage = Math.pow(10, log10LogsAt(Rf)) * (1 - Math.pow(10, -slope * k));
+    const share = 0.04 + 0.56 * drift(b.i * 31 + 11, tHours) * (0.97 + 0.06 * h01(b.i * 977 + 5, Math.floor(tHours * 360)));
+    return b.logK * earnedThisStage * share;
+  }
   function botStats(b, tHours){
     const H = hoursAt(b, tHours);
     if (H <= 0) return null;
     const Rf = rebirthsOf(H * b.skill), R = Math.floor(Rf);
     return {
       wins: Math.floor(H * b.duel),
-      logs: Math.floor(b.logK * Math.pow(10, log10LogsAt(Rf))),
+      logs: Math.floor(heldLogs(b, Rf, tHours)),
       rebirths: R,
       acorns: Math.floor((2.9 * R * R + 3 * R) * b.acK)
     };
@@ -145,14 +159,16 @@
   let dbRef = null;
   function db(){ if (!dbRef && fb()) { try { dbRef = fb().F.getFirestore(fb().app); } catch(e){ dbRef = null; } } return dbRef; }
   const n0 = v => (typeof v === 'number' && isFinite(v) && v > 0) ? v : 0;
-  function statsOf(d){ return d ? { wins: Math.floor(n0(d.duelWins)), logs: n0(d.lifetimeWood), rebirths: Math.floor(n0(d.stats && d.stats.rebirths)), acorns: Math.floor(n0(d.acornsEarned)) } : null; }
+  // logs = logs held right now (goes down when spent or taken); rebirths / acorns / wins are lifetime totals
+  function statsOf(d){ return d ? { wins: Math.floor(n0(d.duelWins)), logs: n0(d.wood), rebirths: Math.floor(n0(d.stats && d.stats.rebirths)), acorns: Math.floor(n0(d.acornsEarned)) } : null; }
   // per account: max over the slots this client knows (the cached cloud slots + the live one)
   function myStats(){
     const cl = C(); if (!cl || !cl.uid) return null;
     const S = TCS.state, best = { wins: 0, logs: 0, rebirths: 0, acorns: 0 };
     const add = s => { if (s) STATS.forEach(k => { if (s[k] > best[k]) best[k] = s[k]; }); };
-    for (let s = 0; s < 3; s++) add(statsOf(TCS.store.getJSON('tcs_csave_' + cl.uid + '_' + s, null)));
-    if (S.loaded && S.profile && S.profile.username === cl.username) add(statsOf(S.data));
+    const live = S.loaded && S.profile && S.profile.username === cl.username ? S.profile.slot : -1;
+    for (let s = 0; s < 3; s++) if (s !== live) add(statsOf(TCS.store.getJSON('tcs_csave_' + cl.uid + '_' + s, null)));
+    if (live >= 0) add(statsOf(S.data));   // the live slot's current values, not its (older) cached copy
     return best;
   }
   // rules caps: whole numbers, rebirths <= 1000, acorns <= 1e8, wins <= 1e6
@@ -176,27 +192,31 @@
       });
     return pushing;
   };
-  bus.on('save', () => { if (Date.now() - lastPush >= 60000) LB.push(); });
+  // while playing: upload at most every 20 s (only when something changed), so the board stays close to live
+  bus.on('save', () => { if (Date.now() - lastPush >= 20000) LB.push(); });
+  setInterval(() => { if (TCS.state && TCS.state.loaded && Date.now() - lastPush >= 20000) LB.push(); }, 5000);
   bus.on('load', () => setTimeout(() => LB.push(), 0));
+  bus.on('adminGrant', () => setTimeout(() => LB.push(true), 0));    // admin gave/took: show it right away
+  bus.on('rebirth', () => setTimeout(() => LB.push(true), 0));
   // logging in (even without opening a save) uploads the stats of the cached slots, so the board knows you
   bus.on('cloudUser', () => setTimeout(() => LB.push(), 1500));
   bus.on('menuOpen', () => setTimeout(() => LB.push(), 500));
   bus.on('duelResult', e => { if (e && e.won) setTimeout(() => LB.push(true), 0); });
   bus.on('logout', () => { lastSent = null; });
 
-  /* admin backfill: Shiv can read every save, so while Shiv is on the menu, entries are created / raised for
-     players whose game hasn't uploaded yet (e.g. they haven't played since leaderboards came out). Never lowers. */
+  /* admin backfill: Shiv can read every save, so while Shiv is on the menu, every player's entry is brought in line
+     with their cloud saves (e.g. players who haven't played since leaderboards came out). Logs are set to what the
+     save holds now (can go down); lifetime stats are never lowered. */
   let lastFill = 0;
   async function adminBackfill(){
-    const cl = C(), d = db(); if (!cl || !cl.admin || !d || Date.now() - lastFill < 10 * 60000) return 0;
+    const cl = C(), d = db(); if (!cl || !cl.admin || !d || Date.now() - lastFill < 2 * 60000) return 0;
     lastFill = Date.now();
     const F = fb().F, best = {};
     try {
       (await F.getDocs(F.query(F.collectionGroup(d, 'slots'), F.limit(500)))).forEach(doc => {
         const v = doc.data(); if (!v || !v.uid || !v.username) return;
         let data = null; try { data = JSON.parse(v.data); } catch(e){}
-        const s = statsOf(data) || { wins: 0, logs: n0(v.lifetimeWood), rebirths: Math.floor(n0(v.rebirths)), acorns: 0 };
-        s.logs = Math.max(s.logs, n0(v.lifetimeWood));
+        const s = statsOf(data) || { wins: 0, logs: n0(v.wood), rebirths: Math.floor(n0(v.rebirths)), acorns: 0 };
         const b = best[v.uid] || (best[v.uid] = { username: v.username, wins: 0, logs: 0, rebirths: 0, acorns: 0 });
         STATS.forEach(k => { if (s[k] > b[k]) b[k] = s[k]; });
       });
@@ -207,33 +227,60 @@
         if (uid === cl.uid) continue;                 // own entry comes from push()
         const b = clampStats(best[uid]), h = have[uid] || {};
         const next = {}; let raise = !have[uid];
-        STATS.forEach(k => { const cur = typeof h[k] === 'number' ? h[k] : 0; next[k] = Math.max(cur, b[k]); if (next[k] > cur) raise = true; });
-        if (!raise || !(next.logs > 0 || next.rebirths > 0)) continue;
+        STATS.forEach(k => {
+          const cur = typeof h[k] === 'number' ? h[k] : 0;
+          next[k] = k === 'logs' ? b[k] : Math.max(cur, b[k]);
+          if (next[k] !== cur) raise = true;
+        });
+        if (!raise) continue;
         if (have[uid]) next.wins = Math.min(next.wins, (h.wins || 0) + 20);   // rules cap per write
         try { await F.setDoc(F.doc(d, 'leaderboard', uid), Object.assign({ username: best[uid].username }, next, { at: F.serverTimestamp() })); n++; }
         catch(e){ console.warn('leaderboard backfill', uid, e && e.code); }
       }
-      Object.keys(realCache).forEach(k => delete realCache[k]);
       return n;
     } catch(e){ console.warn('leaderboard backfill', e && e.code); return 0; }
   }
   LB.adminBackfill = (force) => { if (force) lastFill = 0; return adminBackfill(); };
+  // admin gave/took logs or acorns from another player: update their entry now, even if they're offline
+  // (their own game re-uploads exact numbers once it applies the grant)
+  LB.adminAdjusted = async function(uid, kind, n){
+    const cl = C(), d = db(); if (!cl || !cl.admin || !d || !uid || uid === cl.uid) return false;
+    const F = fb().F, ref = F.doc(d, 'leaderboard', uid);
+    try {
+      const snap = await F.getDoc(ref); if (!snap.exists()) { LB.adminBackfill(true); return false; }
+      const h = snap.data(), next = { wins: h.wins || 0, logs: h.logs || 0, rebirths: h.rebirths || 0, acorns: h.acorns || 0 };
+      if (kind === 'acorns') next.acorns = Math.max(0, Math.floor(next.acorns + n)); else next.logs = Math.max(0, next.logs + n);
+      await F.setDoc(ref, Object.assign({ username: h.username }, clampStats(next), { at: F.serverTimestamp() }));
+      return true;
+    } catch(e){ console.warn('leaderboard adjust', e && e.code); return false; }
+  };
   bus.on('menuOpen', () => setTimeout(adminBackfill, 2000));
   bus.on('cloudStatus', e => { if (e && e.online) setTimeout(adminBackfill, 2000); });
 
-  const realCache = {};   // stat -> {t, rows}
+  // real players: a live Firestore listener on the shown board (top 50 by that stat) while the menu is visible.
+  // After the first read it only receives the entries that change, so a 10 s refresh stays cheap.
+  const realCache = {};   // stat -> {t, rows} (last known rows, also used while the listener warms up)
+  let live = null;        // {stat, unsub, ready: Promise}
+  function rowsOf(qs, stat){
+    const rows = [];
+    qs.forEach(doc => { const v = doc.data(); if (typeof v[stat] === 'number' && v[stat] > 0) rows.push({ id: 'u_' + doc.id, uid: doc.id, name: String(v.username || '?').slice(0, 16), value: v[stat] }); });
+    return rows;
+  }
+  function stopLive(){ if (live){ try { live.unsub(); } catch(e){} live = null; } }
+  LB._stopLive = stopLive;
   async function fetchReal(stat){
     const cl = C(), d = db(); if (!cl || !d) return [];
-    const c = realCache[stat];
-    if (c && Date.now() - c.t < TICK_MS - 1000) return c.rows;
-    try {
-      const F = fb().F;
-      const qs = await F.getDocs(F.query(F.collection(d, 'leaderboard'), F.orderBy(stat, 'desc'), F.limit(TOP)));
-      const rows = [];
-      qs.forEach(doc => { const v = doc.data(); if (typeof v[stat] === 'number' && v[stat] > 0) rows.push({ id: 'u_' + doc.id, uid: doc.id, name: String(v.username || '?').slice(0, 16), value: v[stat] }); });
-      realCache[stat] = { t: Date.now(), rows };
-      return rows;
-    } catch(e){ realCache[stat] = { t: Date.now(), rows: (c && c.rows) || [] }; return realCache[stat].rows; }
+    if (!live || live.stat !== stat){
+      stopLive();
+      const F = fb().F; let first;
+      const ready = new Promise(r => first = r);
+      const unsub = F.onSnapshot(F.query(F.collection(d, 'leaderboard'), F.orderBy(stat, 'desc'), F.limit(TOP)),
+        qs => { realCache[stat] = { t: Date.now(), rows: rowsOf(qs, stat) }; first(); },
+        e => { console.warn('leaderboard listen', e && e.code); first(); stopLive(); });
+      live = { stat, unsub, ready };
+      await Promise.race([ready, new Promise(r => setTimeout(r, 4000))]);
+    }
+    return (realCache[stat] && realCache[stat].rows) || [];
   }
   function merge(bots, real, stat){
     const cl = C(), meUid = cl && cl.uid;
@@ -385,7 +432,7 @@
     if (timer) return;
     let last = null;
     timer = setInterval(() => {
-      if (!menuVisible()){ last = null; return; }
+      if (!menuVisible()){ last = null; stopLive(); return; }
       const tk = nowTick();
       if (tk !== last){ last = tk; if (tk !== curTick) LB.refresh(); }
     }, 1000);

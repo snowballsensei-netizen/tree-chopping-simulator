@@ -163,6 +163,9 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     await B.page.waitForFunction(([w, a]) => TCS.state.data.wood <= w - 1e9 + 1e6 && TCS.state.data.acorns === a - 5, [a1.w, a1.a], { timeout: 15000 }).catch(() => {});
     const a2 = await B.page.evaluate(() => ({ w: TCS.state.data.wood, a: TCS.state.data.acorns, e: TCS.state.data.acornsEarned }));
     check('logs + acorns taken on the running client', a2.w <= a1.w - 1e9 + 1e6 && a2.a === a1.a - 5 && a2.e === a1.e - 5, { a1, a2 });
+    const lbBefore = await B.page.evaluate(async () => { await TCS.leaderboard.push(true); const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app); return (await F.getDoc(F.doc(db, 'leaderboard', TCS.cloud.uid))).data().logs; });
+    check('admin take logs lowers the leaderboard entry', await Z.page.evaluate(k => TCS.state.adminAdjust(k, 0, 'logs', -1e9), row.key) &&
+      await B.page.waitForFunction(async ([uid, before]) => { const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app); const d = (await F.getDoc(F.doc(db, 'leaderboard', uid))).data(); return d.logs <= Math.max(0, before - 1e9) + 1e7 && Math.abs(d.logs - TCS.state.data.wood) <= Math.max(1e7, TCS.state.data.wood * 0.05); }, [uidA, lbBefore], { timeout: 20000, polling: 1000 }).then(() => true, () => false), { lbBefore });
     check('take never below 0', await Z.page.evaluate(k => TCS.state.adminAdjust(k, 0, 'acorns', -1e6), row.key) &&
       await B.page.waitForFunction(() => TCS.state.data.acorns === 0, null, { timeout: 15000 }).then(() => true, () => false));
 
@@ -187,9 +190,9 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     const lbW = await B.page.evaluate(async () => {
       const ok = await TCS.leaderboard.push(true), F = TCS.fb.F, db = F.getFirestore(TCS.fb.app);
       const d = (await F.getDoc(F.doc(db, 'leaderboard', TCS.cloud.uid))).data(), s = TCS.state.data;
-      return { ok, d: { username: d.username, wins: d.wins, logs: d.logs, rebirths: d.rebirths, acorns: d.acorns }, lt: s.lifetimeWood, r: s.stats.rebirths, ae: s.acornsEarned, me: TCS.cloud.username };
+      return { ok, d: { username: d.username, wins: d.wins, logs: d.logs, rebirths: d.rebirths, acorns: d.acorns }, lt: s.wood, r: s.stats.rebirths, ae: s.acornsEarned, me: TCS.cloud.username };
     });
-    check('leaderboard doc written with the player values', lbW.ok && lbW.d.username === lbW.me && lbW.d.logs > 0 && lbW.d.logs <= lbW.lt && lbW.d.logs >= lbW.lt * 0.9
+    check('leaderboard doc written with the player values', lbW.ok && lbW.d.username === lbW.me && lbW.d.logs > 0 && lbW.d.logs <= lbW.lt * 1.1 && lbW.d.logs >= lbW.lt * 0.9
       && lbW.d.rebirths === lbW.r && lbW.d.acorns === lbW.ae && lbW.d.wins === 0, lbW);
     // admin backfill: B's entry is stale (tiny), Shiv's client raises it from B's cloud save; a normal player can't do that
     await B.page.evaluate(async () => { const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app); TCS.state.save(); await TCS.cloud.flush();
@@ -215,7 +218,7 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
       return out;
     }, uidZ);
     check('rules: leaderboard rejects other uid / wrong name / negatives / wins jump / extra keys / delete', ['other', 'wrongName', 'negative', 'negLogs', 'winsJump', 'extraKey', 'delete'].every(k => lbRules[k] === 'permission-denied') && lbRules.own === 'allowed', lbRules);
-    await B.page.evaluate(() => { TCS.state.data.lifetimeWood = 1e40; TCS.state.save(); return TCS.leaderboard.push(true); });
+    await B.page.evaluate(() => { TCS.state.data.wood = 1e40; TCS.state.save(); return TCS.leaderboard.push(true); });
     await B.page.evaluate(() => { TCS.menu.switchProfile(); TCS.leaderboard.select('logs'); });
     const meRow = await B.page.waitForFunction(() => { const r = document.querySelector('.lb-card .lb-row.me'); return r && r.dataset.rank === '1' && r.querySelector('.lb-name').textContent === TCS.cloud.username && document.querySelectorAll('.lb-card .lb-row').length === 50; }, null, { timeout: 15000 }).then(() => true, () => false);
     check('big player tops the merged logs board, own row highlighted', meRow);

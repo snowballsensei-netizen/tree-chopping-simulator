@@ -428,7 +428,10 @@
         S.save(); bus.emit('adminGrant', { amount: n, kind }); return true;
       }
       // cloud: username is the target's uid; other players get it through a grant doc their client applies
-      if (TCS.cloud && TCS.cloud.active) return TCS.cloud.grant(username, slot, n, kind);
+      if (TCS.cloud && TCS.cloud.active) return TCS.cloud.grant(username, slot, n, kind).then(ok => {
+        if (ok && TCS.leaderboard && TCS.leaderboard.adminAdjusted) TCS.leaderboard.adminAdjusted(username, kind, n);
+        return ok;
+      });
       const k = S.key(username, slot), d = store.getJSON(k, null);
       if (!d) return false;
       S.applyAdmin(d, kind, n);
