@@ -24,6 +24,7 @@
       acorns: 0, acornsEarned: 0, perks: {},
       daily: { last: '', streak: 0, total: 0 },   // daily login reward (daily.js): last claimed local date, streak, total claims
       quests: { day: '', week: '', daily: [], weekly: [], chests: {} },   // daily/weekly quests (quests.js)
+      pets: { bunny: 0, fox: 0, dragon: 0 }, pet: null,   // pet levels (0 = not hatched) + the one shown next to the lumberjack (eggs.js)
       duelWins: 0,                   // duels won (friends.js payout, once per duel; leaderboard)
       mm: { wins: 0, losses: 0, streak: 0, best: 0, live: null },   // matchmaking record (matchmaking.js): streak >0 wins / <0 losses; live = in-progress marker
       speciesIndex: 0, species: 0,   // species = stage index (alias kept in sync with speciesIndex)
@@ -78,8 +79,10 @@
     // combined global multiplier shown in shop footer
     multiplier(){
       return S.acornMult() * S.stageMult() * S.species().totalMult * (S.frenzyActive() ? D.FRENZY_MULT : 1) *
-        (S.coffeeActive() ? D.COFFEE_MULT : 1) * S.techMult('all');
+        (S.coffeeActive() ? D.COFFEE_MULT : 1) * S.techMult('all') * S.petMult();
     },
+    // pets from eggs (eggs.js): every hatched pet multiplies production, more with each duplicate level
+    petMult(){ const P = TCS.data.PETS, p = S.data.pets || {}; let m = 1; if (P) P.forEach(x => { const l = p[x.id] || 0; if (l > 0) m *= x.mult + x.per * (l - 1); }); return m; },
     techMult(target){
       let m = 1;
       for (const id in S.data.tech){ if (!S.data.tech[id]) continue; const t = D.techById[id]; if (t && t.effect.target === target) m *= t.effect.mult; }

@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="css/leaderboard.css">
 <link rel="stylesheet" href="css/daily.css">
 <link rel="stylesheet" href="css/quests.css">
+<link rel="stylesheet" href="css/eggs.css">
 <script>
 // cache-busting: game files get ?v=<hour>, so every device picks up a new release within the hour
 window.TCS_V = Math.floor(Date.now() / 3600000);
@@ -32,7 +33,7 @@ document.querySelectorAll('link[rel=stylesheet][href^="css/"]').forEach(l => { l
 <script type="module">
 import * as THREE from 'three';
 window.THREE = THREE;
-const files = ['util','data','state','scene','world','upgrades3d','audio','fx','ui','accounts','cloud','duel3d','friends','daily','quests','menu','leaderboard','matchmaking','main','patchnotes'];
+const files = ['util','data','state','scene','world','upgrades3d','audio','fx','ui','accounts','cloud','duel3d','friends','daily','quests','eggs','menu','leaderboard','matchmaking','main','patchnotes'];
 function load(i){
   if (i >= files.length) return;
   const s = document.createElement('script');

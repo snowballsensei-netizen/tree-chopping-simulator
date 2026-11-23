@@ -294,6 +294,36 @@ async function snapshot(page) {
     check('all upgrade models distinct', distinct.models.length === 0, distinct.models);
     check('all upgrade icon data URLs distinct', distinct.icons.length === 0 && distinct.cardDupes === 0 && distinct.cardImgs === 25, distinct);
     check('all emoji fallbacks distinct', distinct.emojiDupes === 0, distinct.emojiDupes);
+    // ---- eggs + pets
+    const eg = await page.evaluate(() => {
+      const S = TCS.state, E = TCS.eggs, r = {};
+      r.btn = !!document.querySelector('#outfit-btns .eggs-btn');
+      r.rolls = [E.roll(0), E.roll(0.69), E.roll(0.7), E.roll(0.94), E.roll(0.95), E.roll(0.999)].join(',');
+      S.data.acorns = 5; r.poor = E.hatch() === null && S.data.acorns === 5;
+      const m0 = S.multiplier();
+      S.data.acorns = 1000; const h = E.hatch(); r.hatch = !!h && S.data.acorns === 1000 - TCS.data.EGG_COST && S.data.pets[h.id] === 1 && h.isNew;
+      r.mult = Math.abs(S.multiplier() / m0 - E.petMult(h.id)) < 1e-9;
+      S.data.pets = { bunny: 5, fox: 2, dragon: 0 }; r.stack = Math.abs(S.petMult() - 1.6 * 1.75) < 1e-9;
+      r.equipLocked = E.equip('dragon') === false; r.equip = E.equip('fox') && E.shownPet() === 'fox';
+      return r;
+    });
+    check('egg button in the HUD', eg.btn);
+    check('egg rolls follow 70/25/5 odds', eg.rolls === 'bunny,bunny,fox,fox,dragon,dragon', eg.rolls);
+    check('egg needs enough acorns', eg.poor);
+    check('hatching spends acorns and gives a new pet', eg.hatch);
+    check('pet multiplies production', eg.mult);
+    check('pets stack, duplicates level up', eg.stack);
+    check('only hatched pets can be shown', eg.equipLocked && eg.equip);
+    await page.keyboard.press('KeyE'); await page.waitForTimeout(300);
+    check('E opens the egg panel with 3 pets', await page.evaluate(() => document.querySelectorAll('#eggs-panel .eg-pet').length === 3));
+    await page.click('#eggs-panel .eg-hatch'); await page.waitForTimeout(2200);
+    if (process.env.TCS_SHOTS) await page.screenshot({ path: path.join(process.env.TCS_SHOTS, 'eggs-reveal.png') });
+    check('hatch plays the reveal', await page.evaluate(() => !!document.querySelector('#egg-reveal.done')));
+    await page.mouse.click(640, 360); await page.waitForTimeout(400);
+    check('pet appears next to the lumberjack', await page.evaluate(() => !!TCS.eggs.pet3d && TCS.eggs.pet3d.root.parent === TCS.scene.lumberjack.root && !document.getElementById('egg-reveal')));
+    if (process.env.TCS_SHOTS) await page.screenshot({ path: path.join(process.env.TCS_SHOTS, 'eggs-panel.png') });
+    await page.evaluate(() => { TCS.state.save(); }); await page.reload(); await page.waitForFunction(() => window.TCS && TCS.ready, null, { timeout: 30000 }); await page.waitForTimeout(800);
+    check('pets survive a reload', await page.evaluate(() => TCS.state.data.pets.bunny >= 5 && TCS.state.data.pets.fox >= 2 && !!TCS.eggs.pet3d));
     }
     await ctx3.close();
     // ---- daily rewards (fresh guest context: the card pops up on entering the game)

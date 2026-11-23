@@ -1,0 +1,57 @@
+/* eggs.css — egg button, #eggs-panel, hatch reveal (js/eggs.js) */
+.eggs-btn.can svg{animation:egWob 2.4s ease-in-out infinite}
+@keyframes egWob{0%,70%,100%{transform:none}76%{transform:rotate(-12deg)}84%{transform:rotate(10deg)}92%{transform:rotate(-5deg)}}
+
+#eggs-panel{position:absolute;left:var(--gap);bottom:calc(var(--gap) + var(--ib) + 14px);width:300px;display:flex;flex-direction:column;
+  padding:8px;gap:5px;border-radius:14px;border-width:3px;z-index:35;pointer-events:auto;animation:qsPop .25s cubic-bezier(.3,1.5,.6,1)}
+.eg-top{display:flex;align-items:center;gap:8px;padding:2px 2px 4px}
+.eg-egg{width:44px;height:44px;flex:0 0 44px}
+.eg-egg svg{width:100%;height:100%;animation:egWob 2.4s ease-in-out infinite}
+.eg-hatch{flex:1 1 auto;display:flex;align-items:center;justify-content:center;gap:8px;font-family:var(--font);font-size:22px;line-height:1;padding:6px 10px;
+  border:3px solid var(--ink);border-radius:12px;background:#6fd043;color:#fff;box-shadow:0 4px 0 var(--ink);cursor:pointer}
+.eg-hatch:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
+.eg-hatch.off{background:#bbb}
+.eg-hatch.shake{animation:egShake .35s}
+@keyframes egShake{25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+.eg-cost,.eg-have{display:inline-flex;align-items:center;gap:2px;font-size:17px;color:var(--ink)}
+.eg-cost{background:#fff;border-radius:8px;padding:1px 6px 1px 3px;border:2px solid var(--ink)}
+.eg-cost i,.eg-have i{width:18px;height:18px;display:inline-grid}
+.eg-cost svg,.eg-have svg{width:18px;height:18px}
+.eg-pet{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:10px;background:#f6f6f6;border:2px solid transparent;color:var(--ink)}
+.eg-pet.has{cursor:pointer;border-left:6px solid var(--rc)}
+.eg-pet:not(.has){opacity:.6}
+.eg-pet.on{background:#fff3c4;border-color:#ffc83a;border-left-color:var(--rc)}
+.eg-ic{flex:0 0 34px;width:34px;height:34px}
+.eg-ic svg{width:100%;height:100%}
+.eg-mid{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}
+.eg-name{font-size:17px;line-height:1.05}
+.eg-name small{font-size:12px;color:#777}
+.eg-rar{font-size:12px;color:#777;line-height:1}
+.eg-mult{font-size:19px;color:var(--rc)}
+.eg-foot{font-size:13px;color:#777;text-align:center}
+.eg-foot b{color:var(--ink)}
+
+#egg-reveal{position:absolute;inset:0;z-index:80;display:grid;place-items:center;pointer-events:auto;background:rgba(0,0,0,.35);animation:erFade .25s}
+@keyframes erFade{from{opacity:0}}
+#egg-reveal>*{grid-area:1/1}
+.er-glow{width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,var(--rc) 0%,transparent 65%);opacity:0;transform:scale(.3)}
+.er-egg{width:170px;height:170px;animation:erShake 1.3s ease-in forwards}
+.er-egg svg,.er-pet svg{width:100%;height:100%}
+.er-pet{width:190px;height:190px;opacity:0;transform:scale(.2)}
+.er-txt{align-self:end;margin-bottom:22vh;text-align:center;opacity:0}
+.er-name{font-size:46px;line-height:1}
+.er-sub{font-size:22px;color:#fff}
+#egg-reveal.open .er-egg{animation:erBurst .3s forwards}
+#egg-reveal.open .er-glow{transition:all .5s cubic-bezier(.3,1.5,.6,1);opacity:.9;transform:scale(1);animation:erSpin 4s linear infinite}
+#egg-reveal.open .er-pet{transition:all .45s cubic-bezier(.3,1.6,.6,1);opacity:1;transform:scale(1)}
+#egg-reveal.open .er-txt{transition:opacity .3s .2s;opacity:1}
+#egg-reveal.done{cursor:pointer}
+@keyframes erShake{0%{transform:rotate(0)}10%{transform:rotate(-8deg)}20%{transform:rotate(8deg)}30%{transform:rotate(0)}45%{transform:rotate(-12deg)}55%{transform:rotate(12deg)}62%{transform:rotate(0)}
+  72%{transform:rotate(-16deg) scale(1.05)}80%{transform:rotate(16deg) scale(1.08)}88%{transform:rotate(-16deg) scale(1.1)}100%{transform:rotate(0) scale(1.15)}}
+@keyframes erBurst{to{transform:scale(1.8);opacity:0}}
+@keyframes erSpin{to{rotate:360deg}}
+
+@media (max-width:599px){
+  #eggs-panel{bottom:calc(var(--sheet) + var(--gap) * 2 + var(--ib) * 2 + 12px);width:min(310px,calc(100vw - 16px))}
+  .er-name{font-size:36px}
+}

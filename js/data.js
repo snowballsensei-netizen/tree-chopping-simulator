@@ -118,6 +118,13 @@
     { id: 'seedBank',     name: 'Seed Bank',      desc: '+10% acorns per stage',           costs: [8, 20, 45, 100, 220] }
   ];
 
+  /* Pets from eggs (eggs.js). chance sums to 1. Production x(mult + per*(level-1)); all hatched pets stack. */
+  const PETS = [
+    { id: 'bunny',  name: 'Bunny',  rarity: 'Common',    chance: 0.70, mult: 1.2, per: 0.1,  color: '#8fd3ff' },
+    { id: 'fox',    name: 'Fox',    rarity: 'Rare',      chance: 0.25, mult: 1.5, per: 0.25, color: '#c07cff' },
+    { id: 'dragon', name: 'Dragon', rarity: 'Legendary', chance: 0.05, mult: 2.5, per: 0.5,  color: '#ffc83a' }
+  ];
+
   /* Cosmetics. unlock = achievement id. slot: hat | face | boots */
   const COSMETICS = {
     hat: [
@@ -193,7 +200,7 @@
   }));
 
   TCS.data = {
-    UPGRADES, TECH, SPECIES, SPECIES_TIER_MULT, STAGES, ECON, PERKS, COSMETICS, ACHIEVEMENTS: ACH,
+    UPGRADES, TECH, SPECIES, SPECIES_TIER_MULT, STAGES, ECON, PERKS, PETS, EGG_COST: 12, PET_MAX: 5, COSMETICS, ACHIEVEMENTS: ACH,
     upgradeById: Object.fromEntries(UPGRADES.map(u => [u.id, u])),
     techById: Object.fromEntries(TECH.map(t => [t.id, t])),
     perkById: Object.fromEntries(PERKS.map(p => [p.id, p])),
