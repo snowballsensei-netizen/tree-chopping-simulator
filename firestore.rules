@@ -62,7 +62,7 @@ service cloud.firestore {
       }
 
       // admin grants: Shiv creates, the owner's client reads (gives/takes logs or acorns) and deletes.
-      // amount > 0 gives, < 0 takes; kind 'logs' (default when missing) or 'acorns' (whole numbers)
+      // amount > 0 gives, < 0 takes; kind 'logs' (default when missing), 'acorns' or 'rebirths' (whole numbers)
       match /grants/{gid} {
         allow read, delete: if isOwner(uid);
         allow create: if isShiv()
@@ -70,7 +70,9 @@ service cloud.firestore {
           && request.resource.data.slot in [0, 1, 2]
           && num(request.resource.data.amount) && request.resource.data.amount != 0
           && (!('kind' in request.resource.data) || request.resource.data.kind == 'logs'
-            || (request.resource.data.kind == 'acorns' && request.resource.data.amount is int))
+            || (request.resource.data.kind == 'acorns' && request.resource.data.amount is int)
+            || (request.resource.data.kind == 'rebirths' && request.resource.data.amount is int
+                && request.resource.data.amount >= -1000 && request.resource.data.amount <= 1000))
           && request.resource.data.by == request.auth.uid
           && request.resource.data.at == request.time;
         allow update: if false;

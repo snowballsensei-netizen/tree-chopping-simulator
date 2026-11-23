@@ -257,7 +257,9 @@
     try {
       const snap = await F.getDoc(ref); if (!snap.exists()) { LB.adminBackfill(true); return false; }
       const h = snap.data(), next = { wins: h.wins || 0, logs: h.logs || 0, rebirths: h.rebirths || 0, acorns: h.acorns || 0 };
-      if (kind === 'acorns') next.acorns = Math.max(0, Math.floor(next.acorns + n)); else next.logs = Math.max(0, next.logs + n);
+      if (kind === 'acorns') next.acorns = Math.max(0, Math.floor(next.acorns + n));
+      else if (kind === 'rebirths'){ next.rebirths = Math.max(0, Math.floor(next.rebirths + n)); next.logs = 0; }   // a rebirth starts the stage at 0 logs
+      else next.logs = Math.max(0, next.logs + n);
       await F.setDoc(ref, Object.assign({ username: h.username }, clampStats(next), { at: F.serverTimestamp() }));
       return true;
     } catch(e){ console.warn('leaderboard adjust', e && e.code); return false; }

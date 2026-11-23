@@ -128,7 +128,7 @@
   bus.on('frenzyStart', () => progress('frenzy', 1));
   bus.on('coffeeStart', () => progress('coffee', 1));
   bus.on('squirrel', () => progress('squirrel', 1));
-  bus.on('rebirth', () => { progress('rebirth', 1); lastLW = S().data.lifetimeWood; });
+  bus.on('rebirth', e => { if (!(e && e.admin)) progress('rebirth', 1); /* admin-given rebirths don't count */ lastLW = S().data.lifetimeWood; });
   bus.on('duelResult', e => { if (e && e.won) progress('duel', 1); });
   bus.on('dailyClaim', () => progress('login', 1));
 

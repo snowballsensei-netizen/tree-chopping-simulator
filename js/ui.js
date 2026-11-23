@@ -433,7 +433,7 @@
         '<input class="adm-search" type="text" placeholder="SEARCH USERNAME" hidden>' +
         '<select class="adm-target"></select>' +
         '<div class="adm-row"><input class="adm-amt" type="text" inputmode="decimal" placeholder="AMOUNT (E.G. 5000 OR 2.5M)">' +
-          '<div class="adm-kind"><button data-v="logs" class="on">LOGS</button><button data-v="acorns">ACORNS</button></div></div>' +
+          '<div class="adm-kind"><button data-v="logs" class="on">LOGS</button><button data-v="acorns">ACORNS</button><button data-v="rebirths">REBIRTHS</button></div></div>' +
         '<div class="set-btns"><button class="btn b-give">GIVE</button><button class="btn red b-take">TAKE</button></div>' +
         '<div class="adm-msg outlined outlined-sm"></div></div>' +
       '<div class="set-btns"><button class="btn b-switch">SWITCH PROFILE</button><button class="btn red b-logout">LOG OUT</button></div>';
@@ -466,8 +466,8 @@
     const adminDo = sign => {
       const s = S(); if (!s.isAdmin()) return;
       let n = parseAmount(st.admAmt.value);
-      const kind = st.admKind, unit = kind === 'acorns' ? 'ACORNS' : 'LOGS';
-      if (kind === 'acorns') n = Math.round(n);
+      const kind = st.admKind, unit = kind === 'acorns' ? 'ACORNS' : kind === 'rebirths' ? (Math.round(n) === 1 ? 'REBIRTH' : 'REBIRTHS') : 'LOGS';
+      if (kind !== 'logs') n = Math.round(n);
       const [u, slot] = (st.admTarget.value || '').split('|');
       if (!u){ st.admMsg.textContent = 'PICK A PLAYER'; return; }
       if (!(n > 0)){ st.admMsg.textContent = 'ENTER AN AMOUNT'; return; }

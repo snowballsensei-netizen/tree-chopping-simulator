@@ -179,12 +179,13 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
       await t('grant', () => F.addDoc(F.collection(db, 'users', TCS.cloud.uid, 'grants'), { slot: 0, amount: 1e9, by: TCS.cloud.uid, at: F.serverTimestamp() }));
       await t('grantAcorns', () => F.addDoc(F.collection(db, 'users', TCS.cloud.uid, 'grants'), { slot: 0, amount: 50, kind: 'acorns', by: TCS.cloud.uid, at: F.serverTimestamp() }));
       await t('takeFromOther', () => F.addDoc(F.collection(db, 'users', uidZ, 'grants'), { slot: 0, amount: -1e9, kind: 'logs', by: TCS.cloud.uid, at: F.serverTimestamp() }));
+      await t('grantRebirths', () => F.addDoc(F.collection(db, 'users', TCS.cloud.uid, 'grants'), { slot: 0, amount: 5, kind: 'rebirths', by: TCS.cloud.uid, at: F.serverTimestamp() }));
       await t('claimName', () => F.setDoc(F.doc(db, 'usernames', 'someoneelse'), { uid: TCS.cloud.uid, username: 'someoneelse' }));
       await t('writeOther', () => F.setDoc(F.doc(db, 'users', uidZ, 'slots', '1'), { x: 1 }));
       await t('readOwn', () => F.getDoc(F.doc(db, 'users', TCS.cloud.uid, 'slots', '0')));
       return out;
     }, uidZ);
-    check('rules deny non-admin access', ['readOther', 'groupQuery', 'grant', 'grantAcorns', 'takeFromOther', 'claimName', 'writeOther'].every(k => denied[k] === 'permission-denied') && denied.readOwn === 'allowed', denied);
+    check('rules deny non-admin access', ['readOther', 'groupQuery', 'grant', 'grantAcorns', 'takeFromOther', 'grantRebirths', 'claimName', 'writeOther'].every(k => denied[k] === 'permission-denied') && denied.readOwn === 'allowed', denied);
 
     // ---- leaderboard: own doc, rules, unauthenticated read, a big player shows (highlighted) on the merged menu board
     const lbW = await B.page.evaluate(async () => {
@@ -233,6 +234,19 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     check('unauthenticated leaderboard read + real player merged into the board', anon.n >= 1 && !anon.uid && seen, { anon, seen });
     await V.ctx.close();
 
+    // ---- admin gives / takes real rebirths on a running client (B): next stages + their acorns, fresh stage; take = back
+    // (the leaderboard checks above left B on the menu: grants only apply while a save is loaded, so load the game again)
+    if (!(await B.page.evaluate(() => TCS.state.loaded))) { await B.page.evaluate(() => TCS.menu.startGame(TCS.cloud.username, 0)); await loaded(B.page); await B.page.waitForTimeout(1500); }
+    const rb0 = await B.page.evaluate(() => ({ st: TCS.state.data.speciesIndex, r: TCS.state.data.stats.rebirths, a: TCS.state.data.acorns, e: TCS.state.data.acornsEarned }));
+    check('admin give 2 rebirths written', await Z.page.evaluate(k => TCS.state.adminAdjust(k, 0, 'rebirths', 2), row.key));
+    await B.page.waitForFunction(st => TCS.state.data.speciesIndex === st + 2, rb0.st, { timeout: 15000 }).catch(() => {});
+    const rb1 = await B.page.evaluate(() => ({ st: TCS.state.data.speciesIndex, r: TCS.state.data.stats.rebirths, a: TCS.state.data.acorns, e: TCS.state.data.acornsEarned, w: TCS.state.data.wood, owned: Object.values(TCS.state.data.owned).reduce((x, y) => x + y, 0), scene: TCS.state.stage().name }));
+    const expA = await B.page.evaluate(st => TCS.state._stageAcorns(TCS.state.data, st) + TCS.state._stageAcorns(TCS.state.data, st + 1), rb0.st);
+    check('rebirths arrive: +2 stages, +2 count, their acorns, fresh stage', rb1.st === rb0.st + 2 && rb1.r === rb0.r + 2 && rb1.a === rb0.a + expA && rb1.e === rb0.e + expA && rb1.owned === 0 && rb1.w < 1e6, { rb0, rb1, expA });
+    check('admin take 1 rebirth', await Z.page.evaluate(k => TCS.state.adminAdjust(k, 0, 'rebirths', -1), row.key) &&
+      await B.page.waitForFunction(([st, r]) => TCS.state.data.speciesIndex === st - 1 && TCS.state.data.stats.rebirths === r - 1, [rb1.st, rb1.r], { timeout: 15000 }).then(() => true, () => false));
+    await B.page.waitForTimeout(6000);   // let the stage cinematic finish before the next steps
+
     // ---- stays logged in across reload; rename + delete hit the cloud
     await B.page.evaluate(() => TCS.menu.switchProfile());
     await B.page.reload();
@@ -270,7 +284,7 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     await O.page.reload();
     await O.page.waitForFunction(() => window.TCS && TCS.ready && TCS.menu.screen === 'profiles', null, { timeout: 30000 });
     const off = await O.page.evaluate(() => ({ fb: !!TCS.fb, uid: TCS.cloud.uid, ico: !!document.querySelector('.cloud-ico.off'), info: TCS.state.slotInfo(TCS.cloud.username, 0) }));
-    check('offline: cached session + slots, offline icon', !off.fb && off.uid === uidA && off.ico && off.info && off.info.wood >= G, off);
+    check('offline: cached session + slots, offline icon', !off.fb && off.uid === uidA && off.ico && off.info && off.info.lifetimeWood >= G && off.info.rebirths >= 1, off);   /* B was given rebirths above (fresh stage = 0 logs), so check lifetime logs + rebirths */
     await O.ctx.close();
     await Promise.all([A, B, Z, M].map(x => x.ctx.close()));   // fewer WebGL pages for the duel part
     }

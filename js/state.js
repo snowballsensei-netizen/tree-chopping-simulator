@@ -407,8 +407,36 @@
     },
     // give n logs to a profile (the live one directly, others by editing their stored save)
     adminGiveWood(username, slot, n){ return S.adminAdjust(username, slot, 'logs', n); },
-    // apply an admin change to save data d: kind 'logs' | 'acorns', delta > 0 gives, < 0 takes (never below 0)
+    // acorns a rebirth out of stage `si` gives (the rule minimum: no bonus for extra maxed upgrades), x Seed Bank
+    _stageAcorns(d, si){
+      const sb = (d.perks && d.perks.seedBank) || 0;
+      return Math.max(1, Math.floor((D.ACORNS_BASE + D.ACORNS_PER_STAGE * si) * (1 + 0.1 * sb)));
+    },
+    // admin rebirths on save data d: n > 0 = rebirth n times (next stages, their acorns), n < 0 = go back -n stages
+    // (and remove the acorns those stages gave). Either way the player starts that stage fresh, like a rebirth.
+    _adminRebirths(d, n){
+      d.stats = d.stats || {}; d.perks = d.perks || {};
+      let si = d.speciesIndex || 0, gain = 0;
+      if (n > 0){ for (let i = 0; i < n; i++){ gain += S._stageAcorns(d, si); si++; } }
+      else { n = -Math.min(-n, si); for (let i = 0; i < -n; i++){ si--; gain -= S._stageAcorns(d, si); } }
+      if (!n) return 0;
+      if (gain < 0) gain = -Math.min(-gain, d.acorns || 0);
+      d.acorns = (d.acorns || 0) + gain; d.acornsEarned = Math.max(0, (d.acornsEarned || 0) + gain);
+      d.wood = 0; d.runWood = 0;
+      d.owned = d.owned || {}; D.UPGRADES.forEach(u => d.owned[u.id] = 0);
+      d.tech = {}; d.frenzy = { meter: 0, timeLeft: 0 }; d.burst = { timeLeft: 0, mult: 1 };
+      d.speciesIndex = si; d.species = si; d.stats.rebirths = Math.max(0, (d.stats.rebirths || 0) + n);
+      if (d === S.data && S.loaded){
+        const eb = S.perk('earlyBird');
+        if (eb && n > 0) S.addWood(D.perkById.earlyBird.values[eb - 1] * S.costMult());
+        bus.emit('rebirth', { acorns: gain, species: S.species(), admin: true });   // stage swap, cinematic, music, upload
+        bus.emit('owned', d.owned); S.checkAchievements();
+      }
+      return n;
+    },
+    // apply an admin change to save data d: kind 'logs' | 'acorns' | 'rebirths', delta > 0 gives, < 0 takes (never below 0)
     applyAdmin(d, kind, delta){
+      if (kind === 'rebirths') return S._adminRebirths(d, Math.round(delta));
       if (kind === 'acorns'){
         delta = Math.round(delta);
         if (delta < 0) delta = -Math.min(-delta, d.acorns || 0);
@@ -423,8 +451,9 @@
     // admin: give (n > 0) or take (n < 0) logs or acorns from a profile
     adminAdjust(username, slot, kind, n){
       if (!S.isAdmin() || !n || !isFinite(n)) return false;
-      kind = kind === 'acorns' ? 'acorns' : 'logs';
-      if (kind === 'acorns'){ n = Math.round(n); if (!n) return false; }
+      kind = kind === 'acorns' || kind === 'rebirths' ? kind : 'logs';
+      if (kind !== 'logs'){ n = Math.round(n); if (!n) return false; }
+      if (kind === 'rebirths') n = Math.max(-1000, Math.min(1000, n));
       const live = TCS.cloud && TCS.cloud.active
         ? (S.profile && username === TCS.cloud.uid && S.profile.slot === slot)
         : (S.profile && S.profile.username.toLowerCase() === String(username).toLowerCase() && S.profile.slot === slot);

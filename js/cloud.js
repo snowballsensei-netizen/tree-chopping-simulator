@@ -3,7 +3,7 @@
      usernames/{lower} = {uid, username}            (create-only, uniqueness)
      users/{uid} = {username, usernameLower}
      users/{uid}/slots/{0|1|2} = {uid, username, usernameLower, slot, lastSaved, profileName, wood, lifetimeWood, rebirths, speciesIndex, playTime, data: <save JSON string>}
-     users/{uid}/grants/{id} = {slot, amount (+give / -take), kind logs|acorns, by, at}  (written by the admin, consumed + deleted by the owner's client)
+     users/{uid}/grants/{id} = {slot, amount (+give / -take), kind logs|acorns|rebirths, by, at}  (written by the admin, consumed + deleted by the owner's client)
    The game itself still plays from localStorage: each cloud slot is cached under 'tcs_csave_<uid>_<slot>' (see state.key),
    pulled before profile select / play (newer lastSaved wins) and pushed at most every 30 s plus on hide/unload/switch/logout/rebirth.
    API: active, online, uid, username, admin, ready, create(u,p), login(u,p), logout(), syncSlots(), pullSlot(s), flush(),
@@ -253,7 +253,10 @@
       const seen = S.data.appliedGrants = Array.isArray(S.data.appliedGrants) ? S.data.appliedGrants : [];
       let got = 0;
       qs.forEach(g => {
-        const amt = num(g.data().amount), kind = g.data().kind === 'acorns' ? 'acorns' : 'logs';
+        // only grants the server has stored: a write from THIS client shows up locally before the rules reject it,
+        // so without this a player could "grant" themselves anything
+        if (g.metadata.hasPendingWrites) return;
+        const k0 = g.data().kind, amt = num(g.data().amount), kind = k0 === 'acorns' || k0 === 'rebirths' ? k0 : 'logs';
         if (seen.indexOf(g.id) < 0 && amt){
           if (kind === 'logs' && amt > 0) S.addWood(amt); else S.applyAdmin(S.data, kind, amt);
           got++; seen.push(g.id);
@@ -287,7 +290,7 @@
   C.grant = async function(uid, slot, n, kind){
     if (!db || !C.admin) return false;
     try {
-      await F.addDoc(F.collection(db, 'users', uid, 'grants'), { slot: +slot, amount: n, kind: kind === 'acorns' ? 'acorns' : 'logs', by: C.uid, at: F.serverTimestamp() });
+      await F.addDoc(F.collection(db, 'users', uid, 'grants'), { slot: +slot, amount: n, kind: kind === 'acorns' || kind === 'rebirths' ? kind : 'logs', by: C.uid, at: F.serverTimestamp() });
       return true;
     } catch(e){ console.warn(e); return false; }
   };

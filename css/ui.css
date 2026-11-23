@@ -106,8 +106,8 @@
 .save-box{width:100%;height:68px;resize:none;border:3px solid var(--ink);border-radius:10px;padding:6px;font-family:monospace;font-size:12px;user-select:text;-webkit-user-select:text}
 .admin-box{display:flex;flex-direction:column;gap:6px;width:100%}
 .admin-box[hidden]{display:none}
-.adm-row{display:flex;gap:8px;align-items:stretch}
-.adm-row .adm-amt{flex:1 1 0;min-width:0}
+.adm-row{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}
+.adm-row .adm-amt{flex:1 1 120px;min-width:0}
 .adm-kind{display:flex;border:3px solid var(--ink);border-radius:10px;overflow:hidden;flex:0 0 auto}
 .adm-kind button{border:0;padding:3px 8px;font-size:16px;background:#fff;color:#fff;-webkit-text-stroke:2px var(--ink);paint-order:stroke fill;font-family:var(--font)}
 .adm-kind button+button{border-left:3px solid var(--ink)}
