@@ -305,3 +305,12 @@
   .pt-icon{font-size:24px}
 }
 .adm-search[hidden]{display:none}
+/* controls (settings): the two chop binds */
+.bind-btn{flex:0 1 58%;min-width:0;font-family:var(--font);font-size:18px;padding:3px 8px;border:3px solid var(--ink);border-radius:10px;background:#fff;
+  color:var(--ink);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bind-btn.wait{background:#ffe27a;animation:bindPulse 1s ease-in-out infinite}
+@keyframes bindPulse{50%{background:#fff3c4}}
+.bind-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:22px;padding:0 4px}
+.bind-msg{font-size:15px}
+.bind-reset{font-family:var(--font);font-size:15px;border:0;background:none;cursor:pointer;padding:0}
+@media (hover:none) and (pointer:coarse){ .ctl-box{display:none} }

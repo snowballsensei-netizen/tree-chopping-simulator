@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="css/daily.css">
 <link rel="stylesheet" href="css/quests.css">
 <link rel="stylesheet" href="css/eggs.css">
+<link rel="stylesheet" href="css/update.css">
 <script>
 // cache-busting: game files get ?v=<hour>, so every device picks up a new release within the hour
 window.TCS_V = Math.floor(Date.now() / 3600000);
@@ -33,7 +34,7 @@ document.querySelectorAll('link[rel=stylesheet][href^="css/"]').forEach(l => { l
 <script type="module">
 import * as THREE from 'three';
 window.THREE = THREE;
-const files = ['util','data','state','scene','world','upgrades3d','audio','fx','ui','accounts','cloud','duel3d','friends','daily','quests','eggs','menu','leaderboard','matchmaking','main','patchnotes'];
+const files = ['util','binds','data','state','scene','world','upgrades3d','audio','fx','ui','accounts','cloud','duel3d','friends','daily','quests','eggs','menu','leaderboard','matchmaking','main','patchnotes','update'];
 function load(i){
   if (i >= files.length) return;
   const s = document.createElement('script');
@@ -47,6 +48,15 @@ function load(i){
 async function boot(){
   const T = window.TCS = window.TCS || {};
   const emu = /[?&]emu\b/.test(location.search);
+  // release version (version.json, never cached): game files load with ?v=<version> so a new release is picked up at once;
+  // js/update.js polls it and counts open tabs down to a reload when it changes. Falls back to the hourly TCS_V.
+  if (location.protocol !== 'file:') try {
+    const r = await Promise.race([fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(x => x.json()), new Promise((_, no) => setTimeout(no, 2500))]);
+    if (r && r.v){
+      T.BUILD = String(r.v); window.TCS_V = encodeURIComponent(T.BUILD);
+      document.querySelectorAll('link[rel=stylesheet][href^="css/"]').forEach(l => { l.href = l.getAttribute('href').split('?')[0] + '?v=' + window.TCS_V; });
+    }
+  } catch(e){}
   if (/[?&]local\b/.test(location.search)) T.FIREBASE_CONFIG = null;   // ?local: force local accounts (tests)
   if (emu) T.FIREBASE_CONFIG = { apiKey: 'demo-key', authDomain: 'demo-tcs.firebaseapp.com', projectId: 'demo-tcs', appId: 'demo' };
   if (T.FIREBASE_CONFIG){

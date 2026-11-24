@@ -1,0 +1,10 @@
+/* update.css — "new update" countdown banner (js/update.js) */
+#update-bar{position:absolute;left:50%;top:var(--gap);transform:translateX(-50%);z-index:90;display:flex;align-items:center;gap:10px;
+  padding:6px 16px 6px 8px;border-radius:14px;border-width:3px;pointer-events:auto;animation:upDrop .4s cubic-bezier(.3,1.5,.6,1)}
+@keyframes upDrop{from{transform:translate(-50%,-140%)}}
+.up-n{width:46px;height:46px;border-radius:50%;background:#5ec2ff;border:3px solid var(--ink);display:grid;place-items:center;font-size:30px;line-height:1}
+.up-n.tick{animation:upTick .35s cubic-bezier(.3,1.6,.6,1)}
+@keyframes upTick{from{transform:scale(1.35)}}
+.up-txt{display:flex;flex-direction:column;line-height:1.05}
+.up-txt b{font-size:22px;font-weight:normal}
+.up-txt small{font-size:14px;color:#555}

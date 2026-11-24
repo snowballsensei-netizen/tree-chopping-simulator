@@ -425,6 +425,10 @@
       '<label class="set-row outlined outlined-sm">SFX<input type="range" min="0" max="1" step="0.05" data-k="sfx"></label>' +
       '<div class="set-row outlined outlined-sm">GRAPHICS<span class="seg" data-k="graphics"><button data-v="low">LOW</button><button data-v="high">HIGH</button></span></div>' +
       '<div class="set-row outlined outlined-sm">NUMBERS<span class="seg" data-k="numberFormat"><button data-v="short">1.2K</button><button data-v="scientific">1.2E3</button></span></div>' +
+      '<div class="ctl-box"><div class="sec-title outlined">CONTROLS</div>' +
+        '<div class="set-row outlined outlined-sm">CHOP<button class="bind-btn" data-i="0"></button></div>' +
+        '<div class="set-row outlined outlined-sm">CHOP<button class="bind-btn" data-i="1"></button></div>' +
+        '<div class="bind-foot"><span class="bind-msg outlined outlined-sm"></span><button class="bind-reset outlined outlined-sm">RESET</button></div></div>' +
       '<div class="sec-title outlined">SAVE</div>' +
       '<textarea class="save-box" spellcheck="false" placeholder="PASTE SAVE HERE"></textarea>' +
       '<div class="set-btns"><button class="btn b-export">EXPORT</button><button class="btn b-import">IMPORT</button></div>' +
@@ -440,6 +444,7 @@
     st.ranges = p.querySelectorAll('input[type=range]');
     st.segs = p.querySelectorAll('.seg');
     st.box = p.querySelector('.save-box'); st.msg = p.querySelector('.save-msg');
+    buildBinds(p);
     st.ranges.forEach(r => r.addEventListener('input', () => S().setSetting(r.dataset.k, parseFloat(r.value))));
     st.segs.forEach(sg => sg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) S().setSetting(sg.dataset.k, b.dataset.v); }));
     p.querySelector('.b-export').addEventListener('click', () => {
@@ -486,6 +491,31 @@
       try { TCS.menu.logout(); } catch(e){ console.error(e); }
     });
   }
+  // controls: click a bind, then press a key or click a mouse button (Esc cancels)
+  function buildBinds(p){
+    const B = TCS.binds; if (!B){ p.querySelector('.ctl-box').hidden = true; return; }
+    const btns = [...p.querySelectorAll('.bind-btn')], msg = p.querySelector('.bind-msg');
+    let cap = -1;
+    const draw = () => { const b = B.get(); btns.forEach((x, i) => { x.textContent = cap === i ? 'PRESS A KEY...' : B.label(b[i]); x.classList.toggle('wait', cap === i); }); };
+    const stop = () => { cap = -1; B.capturing = false; window.removeEventListener('keydown', onKey, true); window.removeEventListener('pointerdown', onPtr, true); window.removeEventListener('contextmenu', noMenu, true); draw(); };
+    const take = code => {
+      const r = B.set(cap, code);
+      msg.textContent = r === 'reserved' ? B.label(code) + ' IS ALREADY USED' : '';
+      stop();
+    };
+    const onKey = e => { e.preventDefault(); e.stopImmediatePropagation(); if (e.repeat) return; if (e.code === 'Escape'){ msg.textContent = ''; stop(); return; } if (e.code) take(e.code); };
+    const onPtr = e => { if (e.pointerType && e.pointerType !== 'mouse') return; e.preventDefault(); e.stopImmediatePropagation(); take('Mouse' + (e.button || 0)); };
+    const noMenu = e => { e.preventDefault(); e.stopImmediatePropagation(); if (cap >= 0) take('Mouse2'); };   // fallback when a right click sends no pointerdown
+    btns.forEach((x, i) => x.addEventListener('click', e => {
+      e.stopPropagation();
+      if (cap >= 0) return;
+      cap = i; B.capturing = true; msg.textContent = 'ESC TO CANCEL'; draw();
+      setTimeout(() => { if (cap !== i) return; window.addEventListener('keydown', onKey, true); window.addEventListener('pointerdown', onPtr, true); window.addEventListener('contextmenu', noMenu, true); }, 0);
+    }));
+    p.querySelector('.bind-reset').addEventListener('click', () => { if (cap >= 0) stop(); B.reset(); msg.textContent = ''; draw(); });
+    st.drawBinds = () => { if (cap >= 0) stop(); msg.textContent = ''; draw(); };
+    draw();
+  }
   // "5000", "2.5k", "3M", "1e12", "1,000" -> number
   function parseAmount(v){
     v = String(v || '').trim().toLowerCase().replace(/[,\s]/g, '');
@@ -513,6 +543,7 @@
     st.ranges.forEach(r => { if (document.activeElement !== r) r.value = set[r.dataset.k]; });
     st.segs.forEach(sg => sg.querySelectorAll('button').forEach(b => b.classList.toggle('on', set[sg.dataset.k] === b.dataset.v)));
     st.msg.textContent = '';
+    if (st.drawBinds) st.drawBinds();
     if (U.setOutlines) U.setOutlines(set.graphics !== 'low');
     document.body.classList.toggle('gfx-low', set.graphics === 'low');
     TCS.lowParticles = set.graphics === 'low';

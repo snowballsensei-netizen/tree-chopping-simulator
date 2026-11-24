@@ -324,6 +324,16 @@ async function snapshot(page) {
     if (process.env.TCS_SHOTS) await page.screenshot({ path: path.join(process.env.TCS_SHOTS, 'eggs-panel.png') });
     await page.evaluate(() => { TCS.state.save(); }); await page.reload(); await page.waitForFunction(() => window.TCS && TCS.ready, null, { timeout: 30000 }); await page.waitForTimeout(800);
     check('pets survive a reload', await page.evaluate(() => TCS.state.data.pets.bunny >= 5 && TCS.state.data.pets.fox >= 2 && !!TCS.eggs.pet3d));
+    // ---- chop binds (settings) + release version
+    await page.evaluate(() => { TCS.binds.set(0, 'KeyJ'); TCS.binds.set(1, 'Mouse2'); window.__c0 = TCS.state.data.stats.clicks; });
+    await page.keyboard.press('KeyJ'); await page.keyboard.press('Space'); await page.waitForTimeout(100);
+    const bd = await page.evaluate(() => ({ n: TCS.state.data.stats.clicks - window.__c0, res: TCS.binds.set(1, 'KeyQ'), swap: (TCS.binds.set(1, 'KeyJ'), TCS.binds.get().join() === 'Mouse2,KeyJ'),
+      label: TCS.binds.label('Mouse2'), rows: document.querySelectorAll('.panel-settings .bind-btn').length }));
+    await page.evaluate(() => TCS.binds.reset());
+    check('rebound chop key chops, old one does not', bd.n === 1, bd.n);
+    check('game hotkeys cannot be bound; taking the other bind swaps', bd.res === 'reserved' && bd.swap === true, bd);
+    check('settings has the two chop binds', bd.rows === 2 && bd.label === 'RIGHT CLICK', bd);
+    check('release version loaded from version.json', await page.evaluate(() => !!TCS.BUILD && TCS.BUILD === decodeURIComponent(window.TCS_V) && !!TCS.update));
     }
     await ctx3.close();
     // ---- daily rewards (fresh guest context: the card pops up on entering the game)
@@ -590,7 +600,7 @@ async function snapshot(page) {
     const lv = await mp.evaluate(() => ({ marker: !!TCS.store.getJSON(TCS.state.key('guest', 0)).mm.live }));
     await mp.reload();
     await mp.waitForFunction(() => window.TCS && TCS.ready && TCS.state.loaded && TCS.mm, null, { timeout: 30000 });
-    await mp.waitForTimeout(1600);
+    await mp.waitForFunction(() => [...document.querySelectorAll('#toasts .toast')].some(t => /Left a match/.test(t.textContent)), null, { timeout: 6000 }).catch(() => {});
     const lv2 = await mp.evaluate(() => ({ mm: TCS.state.data.mm, toast: [...document.querySelectorAll('#toasts .toast')].some(t => /Left a match/.test(t.textContent)), duel: !!TCS.duel }));
     check('leaving mid-match counts as a loss next load (once)', lv.marker && lv2.mm.losses === 3 && lv2.mm.streak === -2 && !lv2.mm.live && lv2.toast && !lv2.duel, { lv, lv2 });
     await ctxM.close();

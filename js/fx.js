@@ -315,7 +315,7 @@
     blocker.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); }, true);
     const L = layer(); if (L) L.appendChild(blocker);
     window.__fxCine = true;
-    const keyBlock = e => { if (e.code === 'Space'){ e.stopImmediatePropagation(); e.preventDefault(); } };
+    const keyBlock = e => { if (e.code === 'Space' || (TCS.binds && TCS.binds.key(e))){ e.stopImmediatePropagation(); e.preventDefault(); } };
     window.addEventListener('keydown', keyBlock, true);
 
     const startRot = tree.rotation.z;

@@ -51,7 +51,8 @@
         '<div class="dv-vs"><span class="vs-a outlined">' + esc(L.meName) + '</span><b class="vs-x outlined">VS</b><span class="vs-b outlined">' + esc(L.opName) + '</span></div>' +
         '<div class="dv-big outlined"></div>';
       const me = ov;
-      ov.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); if (me._res){ if (me._shown) DV.close(); return; } if (L.onChop) L.onChop(); });
+      ov.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); if (me._res){ if (me._shown) DV.close(); return; } if (L.onChop && (!TCS.binds || TCS.binds.pointer(e))) L.onChop(); });
+      ov.addEventListener('contextmenu', e => e.preventDefault());
       layer.appendChild(ov);
       document.body.classList.add('duel-on');
       // VS intro, synced to the shared start (skipped when joining late)
@@ -147,8 +148,9 @@
     // during a duel Space chops and nothing else reaches the game (capture phase, runs first); Esc only skips a shown outro
     window.addEventListener('keydown', e => {
       if (!DV.L) return;
-      if (e.code === 'Space' || e.key === 'Escape' || e.code === 'KeyF' || e.code === 'KeyM'){ e.preventDefault(); e.stopImmediatePropagation(); }
-      if (e.code === 'Space' && !e.repeat && DV.L.onChop) DV.L.onChop();
+      const chopKey = TCS.binds ? TCS.binds.key(e) : e.code === 'Space';
+      if (chopKey || e.code === 'Space' || e.key === 'Escape' || e.code === 'KeyF' || e.code === 'KeyM'){ e.preventDefault(); e.stopImmediatePropagation(); }
+      if (chopKey && !e.repeat && DV.L.onChop) DV.L.onChop();
       if (e.key === 'Escape' && ov && ov._shown) DV.close();
     }, true);
   }

@@ -3,8 +3,9 @@
    API: TCS.patchnotes.show() (force open), .VERSION */
 (function(){
   const TCS = window.TCS, KEY = 'tcs_patch_seen';
-  const VERSION = '2026-11-23a';
+  const VERSION = '2026-11-24a';
   const NOTES = [
+    ['🎮', 'Custom controls', 'Pick your own two chop buttons in Settings — any key or mouse button'],
     ['🥚', 'Pet eggs', 'Spend acorns on eggs and hatch a Bunny, Fox or rare Dragon that multiply your logs — press E'],
     ['🎯', 'Matchmaking', 'Queue up and duel 300 rival lumberjacks — win big, lose some'],
     ['📜', 'Quests', 'Daily and weekly quests with acorn rewards — press Q'],

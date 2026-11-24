@@ -604,11 +604,12 @@
   addClickable(tree, null, 0); addClickable(lumber.root, null, 0);
   tree.userData.clickTarget = 'tree';
   canvas.addEventListener('pointerdown', e => {
-    if (e.button != null && e.button > 0) return;
+    const B = TCS.binds, chopBtn = B ? B.pointer(e) : !(e.button > 0);   // the chop binds (binds.js): touch, or a bound mouse button
+    if (e.button === 1 && chopBtn) e.preventDefault();                       // no middle-click autoscroll
     const p = pick(e.clientX, e.clientY);
     if (!p) return;
-    if (p.clickable.fn) p.clickable.fn(p.hit, e);
-    else { S_lastClick = { x: e.clientX, y: e.clientY, t: performance.now() }; bus.emit('treeClick', { x: e.clientX, y: e.clientY, target: p.clickable.obj === tree ? 'tree' : 'lumberjack' }); }
+    if (p.clickable.fn){ if (!(e.button > 0)) p.clickable.fn(p.hit, e); }   // squirrels etc: left click / tap
+    else if (chopBtn){ S_lastClick = { x: e.clientX, y: e.clientY, t: performance.now() }; bus.emit('treeClick', { x: e.clientX, y: e.clientY, target: p.clickable.obj === tree ? 'tree' : 'lumberjack' }); }
   });
   let S_lastClick = null;
 

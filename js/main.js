@@ -22,8 +22,9 @@
   function canPlay(){ return S.loaded && SC.mode === 'play' && !TCS.paused; }
   bus.on('treeClick', () => { if (canPlay()) S.chop('click'); });
   window.addEventListener('keydown', e => {
-    if (e.code !== 'Space' || e.repeat) return;
-    const t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+    if (e.repeat || e.ctrlKey || e.metaKey || !(TCS.binds ? TCS.binds.key(e) : e.code === 'Space')) return;   // chop keys (binds.js)
+    const t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (TCS.binds && TCS.binds.capturing) return;
     e.preventDefault();
     if (canPlay()) S.chop('space');
   });
