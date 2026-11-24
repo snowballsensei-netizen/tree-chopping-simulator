@@ -1,5 +1,5 @@
 /* eggs.js — buy eggs with acorns, hatch pets that multiply production (TCS.eggs).
-   Save: S.data.pets = { bunny|fox|dragon: level 0..PET_MAX } (0 = not hatched), S.data.pet = id shown next to the lumberjack (null = best one).
+   Save: S.data.pets = { bunny|fox|dragon|phoenix: level 0..PET_MAX } (0 = not hatched), S.data.pet = id shown next to the lumberjack (null = best one).
    An egg costs D.EGG_COST acorns and rolls a pet by D.PETS[].chance. A new pet starts at level 1, a duplicate levels it up,
    a duplicate of a maxed pet refunds half the egg. The multiplier itself is S.petMult() (state.js).
    UI: egg button in #outfit-btns (key E) -> #eggs-panel (hatch button + the 3 pets, tap one to show it); hatch plays a centred egg-crack reveal.
@@ -56,6 +56,8 @@
     bunny: g('<path d="M13 19C10 10 11 3 14 3s5 7 4 16M27 19c3-9 2-16-1-16s-5 7-4 16" fill="#fff"/><path d="M14 17c-1-5 0-10 0-10M26 17c1-5 0-10 0-10" stroke="#ffb3c7" stroke-width="2.5"/><ellipse cx="20" cy="26" rx="12" ry="10" fill="#fff"/>' + eyes(25, 1) + '<path d="M18.5 29h3l-1.5 1.5z" fill="#ff7a9a" stroke-width="1.5"/>'),
     fox: g('<path d="M7 7l9 7-6 6zM33 7l-9 7 6 6z" fill="#ff8a2a"/><path d="M7 16c0-4 6-6 13-6s13 2 13 6c0 9-7 17-13 17S7 25 7 16z" fill="#ff8a2a"/><path d="M9 20c4 1 7 3 11 11 4-8 7-10 11-11-2 7-6 13-11 13S11 27 9 20z" fill="#fff"/>' + eyes(19) + '<circle cx="20" cy="29" r="2" fill="' + INK + '" stroke="none"/>'),
     dragon: g('<path d="M11 13L8 3l8 7M29 13l3-10-8 7" fill="#ffc83a"/><path d="M6 21c0-8 6-12 14-12s14 4 14 12-6 14-14 14S6 29 6 21z" fill="#5ccf6a"/><ellipse cx="20" cy="28" rx="8" ry="5" fill="#b8f08a"/>' + eyes(19) + '<circle cx="17" cy="27" r="1.2" fill="' + INK + '" stroke="none"/><circle cx="23" cy="27" r="1.2" fill="' + INK + '" stroke="none"/><path d="M4 15l-2-5 6 3M36 15l2-5-6 3" fill="#3fae52"/>'),
+    phoenix: g('<path d="M20 2c3 4 1 6 4 8 2-3 5-4 7-3-3 2-2 5-5 7M20 2c-3 4-1 6-4 8-2-3-5-4-7-3 3 2 2 5 5 7" fill="#ffc83a"/><path d="M7 22c0-8 6-12 13-12s13 4 13 12-6 13-13 13S7 30 7 22z" fill="#ff5a3a"/>' +
+      '<ellipse cx="20" cy="29" rx="7" ry="4.5" fill="#ffc83a" stroke-width="2"/>' + eyes(19) + '<path d="M17 23l3-2 3 2-3 4z" fill="#ff9a3a" stroke-width="2"/><path d="M5 17l-3-4 6 1M35 17l3-4-6 1" fill="#ff9a3a"/>'),
     lock: g('<rect x="9" y="18" width="22" height="16" rx="4" fill="#bbb"/><path d="M14 18v-4a6 6 0 0 1 12 0v4" fill="none"/>')
   };
   const uiIc = k => (TCS.ui && TCS.ui.ICONS && TCS.ui.ICONS[k]) || '';
@@ -87,6 +89,18 @@
       tail = new THREE.Group(); tail.position.set(0, 0.32, -0.3); body.add(tail);
       M.part('capsule', [0.11, 0.3], 0xff8a2a, { parent: tail, pos: [0, 0.12, -0.12], rot: [-0.9, 0, 0] });
       M.part('sphere', [0.1, 10, 8], 0xffffff, { parent: tail, pos: [0, 0.27, -0.28] });
+    } else if (id === 'phoenix'){                       // mythic: flame-red bird with golden crest, wings and tail feathers
+      P('sphere', [0.27, 18, 14], 0xff5a3a, { pos: [0, 0.36, 0], scale: [0.9, 1, 1.1] });
+      P('sphere', [0.17, 14, 10], 0xffc83a, { pos: [0, 0.32, 0.14], scale: [1, 1.1, 0.7], outline: false });
+      P('sphere', [0.21, 18, 14], 0xff5a3a, { pos: [0, 0.72, 0.12] });
+      P('cone', [0.07, 0.18, 8], 0xffc83a, { pos: [0, 0.68, 0.36], rot: [Math.PI / 2, 0, 0] });
+      [-0.25, 0, 0.25].forEach((a, k) => P('cone', [0.05, k === 1 ? 0.3 : 0.22, 6], k === 1 ? 0xffc83a : 0xff9a3a, { pos: [Math.sin(a) * 0.12, 0.95, 0.06 - Math.abs(a) * 0.1], rot: [-0.35, 0, -a * 1.6] }));
+      eye(0.09, 0.78, 0.3, 0.045);
+      wings = [-1, 1].map(sd => { const w = new THREE.Group(); w.position.set(sd * 0.18, 0.5, -0.02); body.add(w);
+        M.part('box', [0.48, 0.03, 0.24, 0.02], 0xff9a3a, { parent: w, pos: [sd * 0.24, 0.05, 0], rot: [0, 0, sd * 0.35] });
+        M.part('box', [0.28, 0.035, 0.18, 0.02], 0xffc83a, { parent: w, pos: [sd * 0.5, 0.15, -0.03], rot: [0, 0, sd * 0.6] }); w.userData.sd = sd; return w; });
+      tail = new THREE.Group(); tail.position.set(0, 0.3, -0.25); body.add(tail);
+      [-0.4, 0, 0.4].forEach((a, k) => M.part('cone', [0.06, 0.45, 6], k === 1 ? 0xffc83a : 0xff5a3a, { parent: tail, pos: [Math.sin(a) * 0.12, -0.05, -0.2], rot: [-Math.PI / 2 - 0.45, a, 0] }));
     } else {
       P('sphere', [0.3, 18, 14], 0x5ccf6a, { pos: [0, 0.34, 0], scale: [0.95, 0.9, 1.15] });
       P('sphere', [0.2, 14, 10], 0xb8f08a, { pos: [0, 0.3, 0.17], scale: [1, 1.1, 0.7], outline: false });
@@ -169,7 +183,7 @@
         return '<div class="eg-pet' + (has ? ' has' : '') + (shown === p.id ? ' on' : '') + '" data-id="' + p.id + '" style="--rc:' + p.color + '">' +
           '<span class="eg-ic">' + (has ? ART[p.id] : ART.lock) + '</span>' +
           '<span class="eg-mid"><span class="eg-name">' + (has ? p.name : '???') + (has ? ' <small>Lv ' + l + (l >= D.PET_MAX ? ' MAX' : '') + '</small>' : '') + '</span>' +
-          '<span class="eg-rar">' + p.rarity + ' · ' + Math.round(p.chance * 100) + '%</span></span>' +
+          '<span class="eg-rar">' + p.rarity + ' · ' + (Math.round(p.chance * 1000) / 10) + '%</span></span>' +
           '<span class="eg-mult outlined outlined-sm">' + xFmt(has ? petMultOf(p.id) : p.mult) + '</span></div>';
       }).join('') +
       '<div class="eg-foot">Pets boost all logs <b>' + xFmt(s.petMult()) + '</b></div>';
@@ -187,6 +201,7 @@
   function playReveal(r){
     const p = byId[r.id];
     reveal = document.createElement('div'); reveal.id = 'egg-reveal';
+    if (p.rarity === 'Mythic') reveal.classList.add('mythic');
     reveal.innerHTML = '<div class="er-glow" style="--rc:' + p.color + '"></div><div class="er-egg">' + ART.egg + '</div>' +
       '<div class="er-pet">' + ART[r.id] + '</div>' +
       '<div class="er-txt"><div class="er-name outlined" style="color:' + p.color + '">' + p.name + '</div>' +

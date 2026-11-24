@@ -326,6 +326,34 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     check('friend request accepted (both sides)', await P.page.evaluate(u => !!TCS.friends.friends[u], uidQ) && await Q.page.evaluate(u => !!TCS.friends.friends[u] && !Object.keys(TCS.friends.incoming).length, uidP));
     await P.page.keyboard.press('Escape'); await Q.page.keyboard.press('Escape');
 
+    // ---- chat: P messages Q (a curse gets masked), Q sees the unread dot then the message; raw curses written around the filter are masked on display
+    await P.page.keyboard.press('f');
+    await P.page.waitForSelector('#friends-panel .fr-row[data-uid="' + uidQ + '"] .fr-ic.chat', { timeout: 5000 }).catch(() => {});
+    await P.page.click('#friends-panel .fr-row[data-uid="' + uidQ + '"] .fr-ic.chat');
+    check('chat opens from the friends list', await P.page.isVisible('#chat-panel'));
+    await P.page.fill('#chat-panel .ch-in', 'hello what the shit'); await P.page.press('#chat-panel .ch-in', 'Enter');
+    await P.page.waitForFunction(() => /No cursing/.test(document.querySelector('#chat-panel .ch-warn').textContent), null, { timeout: 8000 }).catch(() => {});
+    check('sender is told the curse was hidden', await P.page.evaluate(() => /No cursing/.test(document.querySelector('#chat-panel .ch-warn').textContent)));
+    await Q.page.waitForFunction(u => TCS.chat.unread(u), uidP, { timeout: 10000 }).catch(() => {});
+    check('friend gets an unread chat dot', await Q.page.evaluate(u => TCS.chat.unread(u) && !!document.querySelector('.friends-btn.chat-dot'), uidP));
+    await Q.page.evaluate(u => TCS.chat.open(u), uidP);
+    await Q.page.waitForFunction(() => document.querySelectorAll('#chat-panel .ch-msg').length > 0, null, { timeout: 10000 }).catch(() => {});
+    const qSees = await Q.page.evaluate(() => [...document.querySelectorAll('#chat-panel .ch-txt')].map(x => x.textContent));
+    check('friend sees the message with the curse masked', qSees.length === 1 && qSees[0] === 'hello what the ****', qSees);
+    const pair = [uidP, uidQ].sort().join('_');
+    await P.page.evaluate(async pair => { const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app);
+      await F.addDoc(F.collection(db, 'chats', pair, 'msgs'), { from: TCS.cloud.uid, text: 'raw fuck', at: F.serverTimestamp() }); }, pair);
+    await Q.page.waitForFunction(() => document.querySelectorAll('#chat-panel .ch-msg').length > 1, null, { timeout: 10000 }).catch(() => {});
+    const qSees2 = await Q.page.evaluate(() => [...document.querySelectorAll('#chat-panel .ch-txt')].map(x => x.textContent));
+    check('curses written around the filter are still masked on screen', qSees2[1] === 'raw ****', qSees2);
+    await Q.page.fill('#chat-panel .ch-in', 'gg'); await Q.page.press('#chat-panel .ch-in', 'Enter');
+    await P.page.waitForFunction(() => [...document.querySelectorAll('#chat-panel .ch-txt')].some(x => x.textContent === 'gg'), null, { timeout: 10000 }).catch(() => {});
+    check('reply arrives in the open chat', await P.page.evaluate(() => [...document.querySelectorAll('#chat-panel .ch-txt')].some(x => x.textContent === 'gg')));
+    const longMsg = await P.page.evaluate(async pair => { const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app);
+      try { await F.addDoc(F.collection(db, 'chats', pair, 'msgs'), { from: TCS.cloud.uid, text: 'x'.repeat(500), at: F.serverTimestamp() }); return 'allowed'; } catch (e) { return e.code; } }, pair);
+    check('rules reject over-long messages', longMsg === 'permission-denied', longMsg);
+    await P.page.evaluate(() => TCS.chat.close()); await Q.page.evaluate(() => TCS.chat.close());
+
     // insufficient funds: at send (own + opponent's published balance), at accept, and in the rules
     const bad1 = await P.page.evaluate(u => TCS.friends.challenge(u, 'logs', 5e6), uidQ);
     const bad2 = await P.page.evaluate(u => TCS.friends.challenge(u, 'logs', '600k'), uidQ);
@@ -358,13 +386,17 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     const bad4 = await Q.page.evaluate(id => TCS.friends.acceptDuel(id), small.id);
     check('insufficient funds rejected at accept', small.ok && !bad4.ok && /not enough/i.test(bad4.error), { small, bad4 });
     const R = await device(); await form(R.page, true, 'Rout_' + sfx, 'duel1234'); await toProfiles(R.page);
-    const outsider = await R.page.evaluate(async id => {
+    const outsider = await R.page.evaluate(async ({ id, p, q }) => {
       const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app), out = {};
       try { await F.getDoc(F.doc(db, 'duels', id)); out.read = 'allowed'; } catch (e) { out.read = e.code; }
       try { await F.updateDoc(F.doc(db, 'duels', id), { status: 'declined' }); out.write = 'allowed'; } catch (e) { out.write = e.code; }
+      const pair = [p, q].sort().join('_');
+      try { await F.getDocs(F.collection(db, 'chats', pair, 'msgs')); out.chatRead = 'allowed'; } catch (e) { out.chatRead = e.code; }
+      try { await F.addDoc(F.collection(db, 'chats', pair, 'msgs'), { from: TCS.cloud.uid, text: 'hi', at: F.serverTimestamp() }); out.chatWrite = 'allowed'; } catch (e) { out.chatWrite = e.code; }
       return out;
-    }, small.id).catch(e => ({ err: e.message }));
+    }, { id: small.id, p: uidP, q: uidQ }).catch(e => ({ err: e.message }));
     check('rules: a third user cannot read/update the duel', outsider.read === 'permission-denied' && outsider.write === 'permission-denied', outsider);
+    check('rules: a non-friend cannot read or write the chat', outsider.chatRead === 'permission-denied' && outsider.chatWrite === 'permission-denied', outsider);
     await Q.page.evaluate(id => TCS.friends.declineDuel(id), small.id);
     await P.page.waitForFunction(id => !TCS.friends.duels[id] || TCS.friends.duels[id].status === 'declined', small.id, { timeout: 10000 }).catch(() => {});
     await setBal(Q, 5e5, 20);

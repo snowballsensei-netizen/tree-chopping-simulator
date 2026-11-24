@@ -298,7 +298,7 @@ async function snapshot(page) {
     const eg = await page.evaluate(() => {
       const S = TCS.state, E = TCS.eggs, r = {};
       r.btn = !!document.querySelector('#outfit-btns .eggs-btn');
-      r.rolls = [E.roll(0), E.roll(0.69), E.roll(0.7), E.roll(0.94), E.roll(0.95), E.roll(0.999)].join(',');
+      r.rolls = [E.roll(0), E.roll(0.69), E.roll(0.7), E.roll(0.94), E.roll(0.95), E.roll(0.99), E.roll(0.996)].join(',');
       S.data.acorns = 5; r.poor = E.hatch() === null && S.data.acorns === 5;
       const m0 = S.multiplier();
       S.data.acorns = 1000; const h = E.hatch(); r.hatch = !!h && S.data.acorns === 1000 - TCS.data.EGG_COST && S.data.pets[h.id] === 1 && h.isNew;
@@ -308,14 +308,14 @@ async function snapshot(page) {
       return r;
     });
     check('egg button in the HUD', eg.btn);
-    check('egg rolls follow 70/25/5 odds', eg.rolls === 'bunny,bunny,fox,fox,dragon,dragon', eg.rolls);
+    check('egg rolls follow 69.5/25/5/0.5 odds', eg.rolls === 'bunny,bunny,fox,fox,dragon,dragon,phoenix', eg.rolls);
     check('egg needs enough acorns', eg.poor);
     check('hatching spends acorns and gives a new pet', eg.hatch);
     check('pet multiplies production', eg.mult);
     check('pets stack, duplicates level up', eg.stack);
     check('only hatched pets can be shown', eg.equipLocked && eg.equip);
     await page.keyboard.press('KeyE'); await page.waitForTimeout(300);
-    check('E opens the egg panel with 3 pets', await page.evaluate(() => document.querySelectorAll('#eggs-panel .eg-pet').length === 3));
+    check('E opens the egg panel with 4 pets', await page.evaluate(() => document.querySelectorAll('#eggs-panel .eg-pet').length === 4));
     await page.click('#eggs-panel .eg-hatch'); await page.waitForTimeout(2200);
     if (process.env.TCS_SHOTS) await page.screenshot({ path: path.join(process.env.TCS_SHOTS, 'eggs-reveal.png') });
     check('hatch plays the reveal', await page.evaluate(() => !!document.querySelector('#egg-reveal.done')));
@@ -324,6 +324,9 @@ async function snapshot(page) {
     if (process.env.TCS_SHOTS) await page.screenshot({ path: path.join(process.env.TCS_SHOTS, 'eggs-panel.png') });
     await page.evaluate(() => { TCS.state.save(); }); await page.reload(); await page.waitForFunction(() => window.TCS && TCS.ready, null, { timeout: 30000 }); await page.waitForTimeout(800);
     check('pets survive a reload', await page.evaluate(() => TCS.state.data.pets.bunny >= 5 && TCS.state.data.pets.fox >= 2 && !!TCS.eggs.pet3d));
+    // ---- chat curse filter
+    const cf = await page.evaluate(() => { const c = TCS.chat.clean; return [c('what the fuck'), c('F U C K'), c('sh1t'), c('go to hell!'), c('hello class'), c('Scunthorpe cocktail'), c('assassin glass')]; });
+    check('chat filter masks curses (caps, l33t, spaced) but not innocent words', cf.join('|') === 'what the ****|* * * *|****|go to *****|hello class|Scunthorpe cocktail|assassin glass', cf);
     // ---- chop binds (settings) + release version
     await page.evaluate(() => { TCS.binds.set(0, 'KeyJ'); TCS.binds.set(1, 'Mouse2'); window.__c0 = TCS.state.data.stats.clicks; });
     await page.keyboard.press('KeyJ'); await page.keyboard.press('Space'); await page.waitForTimeout(100);

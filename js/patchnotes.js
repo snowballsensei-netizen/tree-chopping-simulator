@@ -3,8 +3,10 @@
    API: TCS.patchnotes.show() (force open), .VERSION */
 (function(){
   const TCS = window.TCS, KEY = 'tcs_patch_seen';
-  const VERSION = '2026-11-24a';
+  const VERSION = '2026-11-24c';
   const NOTES = [
+    ['💬', 'Friend chat', 'Tap the chat bubble next to a friend to message them — no cursing allowed!'],
+    ['🔥', 'Mythic Phoenix', 'A 0.5% Mythic pet is now hiding in the eggs — x5 logs'],
     ['🎮', 'Custom controls', 'Pick your own two chop buttons in Settings — any key or mouse button'],
     ['🥚', 'Pet eggs', 'Spend acorns on eggs and hatch a Bunny, Fox or rare Dragon that multiply your logs — press E'],
     ['🎯', 'Matchmaking', 'Queue up and duel 300 rival lumberjacks — win big, lose some'],

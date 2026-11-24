@@ -1,0 +1,26 @@
+/* chat.css — friend chat (js/chat.js): 💬 on friend rows, the chat panel, unread dots */
+.fr-ic.chat{background:#cdeeff;position:relative}
+.fr-ic.chat.new::after{content:'';position:absolute;right:-5px;top:-5px;width:10px;height:10px;border-radius:50%;background:#ff4a3d;border:2px solid var(--ink)}
+.friends-btn.chat-dot .fr-dot{display:block}
+
+#chat-panel{position:absolute;left:var(--gap);bottom:calc(var(--gap) + var(--ib) + 14px);width:290px;height:min(380px,58vh);display:flex;flex-direction:column;
+  padding:8px;gap:5px;border-radius:14px;border-width:3px;z-index:36;pointer-events:auto;animation:qsPop .25s cubic-bezier(.3,1.5,.6,1)}
+.ch-head{display:flex;align-items:center;gap:6px;font-size:19px;color:var(--ink);text-transform:uppercase}
+.ch-name{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch-back,.ch-x{border:0;background:none;cursor:pointer;color:var(--ink);font-family:var(--font);padding:0 4px}
+.ch-back{font-size:26px;line-height:.8}
+.ch-x{font-size:15px;color:#777}
+.ch-list{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:4px;padding:6px;border-radius:10px;background:#f2f4f7}
+.ch-msg{display:flex}
+.ch-msg.mine{justify-content:flex-end}
+.ch-txt{max-width:82%;padding:4px 9px;border-radius:12px 12px 12px 3px;background:#fff;border:2px solid var(--ink);font-size:16px;line-height:1.15;color:var(--ink);
+  overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+.ch-msg.mine .ch-txt{background:#8fd3ff;border-radius:12px 12px 3px 12px}
+.ch-empty{margin:auto;font-size:15px;color:#888;text-align:center}
+.ch-warn{font-size:13px;color:#e8443a;min-height:0;line-height:1.1}
+.ch-warn:empty{display:none}
+.ch-in{font-family:var(--font);font-size:17px;width:100%;border:3px solid var(--ink);border-radius:10px;padding:4px 8px;outline:none;background:#fff;color:var(--ink);
+  user-select:text;-webkit-user-select:text}
+@media (max-width:599px){
+  #chat-panel{bottom:calc(var(--sheet) + var(--gap) * 2 + var(--ib) * 2 + 12px);width:min(320px,calc(100vw - 16px));height:min(340px,calc(100vh - var(--sheet) - var(--ib) * 2 - 40px))}
+}

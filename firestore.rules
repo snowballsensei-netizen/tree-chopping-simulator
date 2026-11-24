@@ -222,6 +222,31 @@ service cloud.firestore {
         || (O().status == 'pending' && request.time > O().createdAt + duration.value(120, 's')));
     }
 
+    // friend chat: chats/{a}_{b} (uids sorted) = {members:[a,b], last, lastFrom, lastAt}; chats/{pair}/msgs/{id} = {from, text, at}.
+    // Only the two members, while friends, read or write. Messages are 1-120 chars and never edited or deleted.
+    match /chats/{pair} {
+      function ids() { return pair.split('_'); }
+      function isMember() { return signedIn() && ids().size() == 2 && (ids()[0] == request.auth.uid || ids()[1] == request.auth.uid); }
+      function other() { return ids()[0] == request.auth.uid ? ids()[1] : ids()[0]; }
+      function isFriend() { return exists(/databases/$(database)/documents/friends/$(request.auth.uid)/list/$(other())); }
+      function okText(t) { return t is string && t.size() >= 1 && t.size() <= 120; }
+      allow read: if signedIn() && request.auth.uid in resource.data.members;
+      allow create, update: if isMember() && isFriend() && ids()[0] < ids()[1]
+        && request.resource.data.keys().hasOnly(['members', 'last', 'lastFrom', 'lastAt'])
+        && request.resource.data.members == ids()
+        && okText(request.resource.data.last) && request.resource.data.lastFrom == request.auth.uid
+        && request.resource.data.lastAt == request.time;
+      allow delete: if false;
+      match /msgs/{id} {
+        allow read: if isMember();
+        allow create: if isMember() && isFriend()
+          && request.resource.data.keys().hasOnly(['from', 'text', 'at'])
+          && request.resource.data.from == request.auth.uid && okText(request.resource.data.text)
+          && request.resource.data.at == request.time;
+        allow update, delete: if false;
+      }
+    }
+
     // global announcement: anyone reads, only the admin (Shiv) posts {text 1-140 chars, at = server time, by = own uid}
     match /meta/announcement {
       allow read: if true;

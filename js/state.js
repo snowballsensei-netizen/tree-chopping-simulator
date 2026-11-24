@@ -24,7 +24,7 @@
       acorns: 0, acornsEarned: 0, perks: {},
       daily: { last: '', streak: 0, total: 0 },   // daily login reward (daily.js): last claimed local date, streak, total claims
       quests: { day: '', week: '', daily: [], weekly: [], chests: {} },   // daily/weekly quests (quests.js)
-      pets: { bunny: 0, fox: 0, dragon: 0 }, pet: null,   // pet levels (0 = not hatched) + the one shown next to the lumberjack (eggs.js)
+      pets: { bunny: 0, fox: 0, dragon: 0, phoenix: 0 }, pet: null,   // pet levels (0 = not hatched) + the one shown next to the lumberjack (eggs.js)
       duelWins: 0,                   // duels won (friends.js payout, once per duel; leaderboard)
       mm: { wins: 0, losses: 0, streak: 0, best: 0, live: null },   // matchmaking record (matchmaking.js): streak >0 wins / <0 losses; live = in-progress marker
       speciesIndex: 0, species: 0,   // species = stage index (alias kept in sync with speciesIndex)

@@ -55,3 +55,8 @@
   #eggs-panel{bottom:calc(var(--sheet) + var(--gap) * 2 + var(--ib) * 2 + 12px);width:min(310px,calc(100vw - 16px))}
   .er-name{font-size:36px}
 }
+/* mythic hatch: rainbow glow + shimmering name */
+#egg-reveal.mythic .er-glow{background:conic-gradient(#ff4fd8,#ffc83a,#6fd043,#5ec2ff,#c07cff,#ff4fd8);-webkit-mask:radial-gradient(circle,#000 0%,transparent 66%);mask:radial-gradient(circle,#000 0%,transparent 66%)}
+#egg-reveal.mythic .er-name{animation:erShimmer 1.2s linear infinite}
+@keyframes erShimmer{0%,100%{color:#ff4fd8}25%{color:#ffc83a}50%{color:#5ec2ff}75%{color:#6fd043}}
+.eg-pet[data-id="phoenix"].has .eg-mult{animation:erShimmer 2s linear infinite}

@@ -120,9 +120,10 @@
 
   /* Pets from eggs (eggs.js). chance sums to 1. Production x(mult + per*(level-1)); all hatched pets stack. */
   const PETS = [
-    { id: 'bunny',  name: 'Bunny',  rarity: 'Common',    chance: 0.70, mult: 1.2, per: 0.1,  color: '#8fd3ff' },
+    { id: 'bunny',  name: 'Bunny',  rarity: 'Common',    chance: 0.695, mult: 1.2, per: 0.1,  color: '#8fd3ff' },
     { id: 'fox',    name: 'Fox',    rarity: 'Rare',      chance: 0.25, mult: 1.5, per: 0.25, color: '#c07cff' },
-    { id: 'dragon', name: 'Dragon', rarity: 'Legendary', chance: 0.05, mult: 2.5, per: 0.5,  color: '#ffc83a' }
+    { id: 'dragon', name: 'Dragon', rarity: 'Legendary', chance: 0.05, mult: 2.5, per: 0.5,  color: '#ffc83a' },
+    { id: 'phoenix', name: 'Phoenix', rarity: 'Mythic',  chance: 0.005, mult: 5,  per: 1.5,  color: '#ff4fd8' }
   ];
 
   /* Cosmetics. unlock = achievement id. slot: hat | face | boots */
