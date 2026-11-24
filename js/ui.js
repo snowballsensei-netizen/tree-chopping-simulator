@@ -439,7 +439,11 @@
         '<div class="adm-row"><input class="adm-amt" type="text" inputmode="decimal" placeholder="AMOUNT (E.G. 5000 OR 2.5M)">' +
           '<div class="adm-kind"><button data-v="logs" class="on">LOGS</button><button data-v="acorns">ACORNS</button><button data-v="rebirths">REBIRTHS</button></div></div>' +
         '<div class="set-btns"><button class="btn b-give">GIVE</button><button class="btn red b-take">TAKE</button></div>' +
-        '<div class="adm-msg outlined outlined-sm"></div></div>' +
+        '<div class="adm-msg outlined outlined-sm"></div>' +
+        '<div class="sec-title outlined">ANNOUNCE</div>' +
+        '<textarea class="ann-text" maxlength="140" spellcheck="true" placeholder="MESSAGE FOR EVERYONE (140 MAX)"></textarea>' +
+        '<div class="set-btns"><button class="btn b-announce">SEND TO EVERYONE</button></div>' +
+        '<div class="ann-msg outlined outlined-sm"></div></div>' +
       '<div class="set-btns"><button class="btn b-switch">SWITCH PROFILE</button><button class="btn red b-logout">LOG OUT</button></div>';
     st.ranges = p.querySelectorAll('input[type=range]');
     st.segs = p.querySelectorAll('.seg');
@@ -482,6 +486,17 @@
         if (ok) fillAdminTargets();
       });
     };
+    // global announcement (announce.js): shows at the top of every open game
+    st.annText = p.querySelector('.ann-text'); st.annMsg = p.querySelector('.ann-msg');
+    st.annText.addEventListener('keydown', e => e.stopPropagation());
+    st.annText.addEventListener('input', () => { st.annMsg.textContent = st.annText.value.length ? st.annText.value.length + ' / 140' : ''; });
+    p.querySelector('.b-announce').addEventListener('click', () => {
+      const t = st.annText.value.trim();
+      if (!t){ st.annMsg.textContent = 'TYPE A MESSAGE'; return; }
+      if (!TCS.announce){ st.annMsg.textContent = 'FAILED'; return; }
+      st.annMsg.textContent = 'SENDING...';
+      TCS.announce.post(t).then(ok => { st.annMsg.textContent = ok ? 'SENT TO EVERYONE' : 'FAILED'; if (ok) st.annText.value = ''; });
+    });
     p.querySelector('.b-give').addEventListener('click', () => adminDo(1));
     p.querySelector('.b-take').addEventListener('click', () => adminDo(-1));
     p.querySelector('.b-switch').addEventListener('click', () => {

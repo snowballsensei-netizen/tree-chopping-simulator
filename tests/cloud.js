@@ -187,6 +187,18 @@ const benign = t => /fonts\.(googleapis|gstatic)\.com|ERR_INTERNET|permission|PE
     }, uidZ);
     check('rules deny non-admin access', ['readOther', 'groupQuery', 'grant', 'grantAcorns', 'takeFromOther', 'grantRebirths', 'claimName', 'writeOther'].every(k => denied[k] === 'permission-denied') && denied.readOwn === 'allowed', denied);
 
+    // ---- global announcement: Shiv posts from the admin panel, B sees the banner; a normal player can't post
+    const annDenied = await B.page.evaluate(async () => {
+      const F = TCS.fb.F, db = F.getFirestore(TCS.fb.app);
+      try { await F.setDoc(F.doc(db, 'meta', 'announcement'), { text: 'hacked', at: F.serverTimestamp(), by: TCS.cloud.uid }); return 'allowed'; } catch (e) { return e.code; }
+    });
+    check('normal player cannot post an announcement', annDenied === 'permission-denied', annDenied);
+    await Z.page.evaluate(() => { const b = document.querySelector('.panel-settings .ann-text'); b.value = 'Test announcement from Shiv'; document.querySelector('.panel-settings .b-announce').click(); });
+    const annSeen = await B.page.waitForFunction(() => { const b = document.getElementById('announce-bar'); return b && /Test announcement from Shiv/.test(b.textContent); }, null, { timeout: 15000 }).then(() => true, () => false);
+    check('admin announcement shows at the top of other players screens', annSeen);
+    const annMsg = await Z.page.evaluate(() => document.querySelector('.panel-settings .ann-msg').textContent);
+    check('admin panel confirms the announcement', /SENT/.test(annMsg), annMsg);
+
     // ---- leaderboard: own doc, rules, unauthenticated read, a big player shows (highlighted) on the merged menu board
     const lbW = await B.page.evaluate(async () => {
       const ok = await TCS.leaderboard.push(true), F = TCS.fb.F, db = F.getFirestore(TCS.fb.app);
